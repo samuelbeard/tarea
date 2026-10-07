@@ -1,0 +1,167 @@
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { formatLong, formatRelative } from "../dates";
+import { focusFirstTodo } from "../shortcuts";
+import type { Todo, TodoPatch } from "../types";
+import { TodoItem } from "./TodoItem";
+
+type TodoPaneProps = {
+  selected: string;
+  today: string;
+  todos: Todo[];
+  recentProjects: string[];
+  error: string | null;
+  onDismissError: () => void;
+  onCreate: (title: string) => Promise<void>;
+  onUpdate: (id: string, patch: TodoPatch) => Promise<void>;
+  onMove: (id: string, toDate: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  /** Bumped to ask for the add field to be focused once it can be. */
+  focusAddRequest: number;
+};
+
+function groupByProject(
+  todos: Todo[],
+): { project: string | null; todos: Todo[] }[] {
+  const untagged: Todo[] = [];
+  const order: string[] = [];
+  const grouped = new Map<string, Todo[]>();
+  for (const todo of todos) {
+    const project = todo.project?.trim() ? todo.project : null;
+    if (!project) {
+      untagged.push(todo);
+      continue;
+    }
+    const bucket = grouped.get(project);
+    if (bucket) {
+      bucket.push(todo);
+    } else {
+      order.push(project);
+      grouped.set(project, [todo]);
+    }
+  }
+  const groups: { project: string | null; todos: Todo[] }[] = [];
+  if (untagged.length > 0) groups.push({ project: null, todos: untagged });
+  for (const project of order) {
+    const items = grouped.get(project);
+    if (items) groups.push({ project, todos: items });
+  }
+  return groups;
+}
+
+export function TodoPane({
+  selected,
+  today,
+  todos,
+  recentProjects,
+  error,
+  onDismissError,
+  onCreate,
+  onUpdate,
+  onMove,
+  onDelete,
+  focusAddRequest,
+}: TodoPaneProps) {
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  const handledFocusRequest = useRef(focusAddRequest);
+  const canAdd = selected >= today;
+
+  useEffect(() => {
+    if (!canAdd || focusAddRequest === handledFocusRequest.current) return;
+    handledFocusRequest.current = focusAddRequest;
+    addInputRef.current?.focus();
+  }, [canAdd, focusAddRequest]);
+  const groups = groupByProject(todos);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const next = title.trim();
+    if (!next || saving) return;
+    setSaving(true);
+    try {
+      await onCreate(next);
+      setTitle("");
+    } catch {
+      // The pane shows the error from the parent.
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="todo-pane">
+      <header className="todo-header">
+        <p className="kicker">{formatRelative(selected, today)}</p>
+        <h1>{formatLong(selected)}</h1>
+      </header>
+      {error ? (
+        <p
+          className="error"
+          role="alert"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={onDismissError}
+          >
+            Dismiss
+          </button>
+        </p>
+      ) : null}
+      {canAdd ? (
+        <form
+          className="add-form"
+          onSubmit={(event) => void submit(event)}
+        >
+          <input
+            ref={addInputRef}
+            value={title}
+            placeholder="Add a todo"
+            aria-label="Add a todo"
+            onChange={(event) => setTitle(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" && focusFirstTodo()) {
+                event.preventDefault();
+              }
+              if (event.key === "Escape") event.currentTarget.blur();
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!title.trim() || saving}
+          >
+            Add
+          </button>
+        </form>
+      ) : null}
+      <div className="todo-scroll">
+        {todos.length === 0 ? (
+          <p className="empty">Nothing scheduled.</p>
+        ) : null}
+        {groups.map((group) => (
+          <section
+            key={group.project ? `project:${group.project}` : "untagged"}
+            className="project-group"
+          >
+            {group.project ? (
+              <h2 className="project-heading">{group.project}</h2>
+            ) : null}
+            {group.todos.map((todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                today={today}
+                recentProjects={recentProjects}
+                onUpdate={onUpdate}
+                onMove={onMove}
+                onDelete={onDelete}
+              />
+            ))}
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
