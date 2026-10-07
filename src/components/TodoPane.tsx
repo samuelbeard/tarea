@@ -11,6 +11,10 @@ type TodoPaneProps = {
   recentProjects: string[];
   error: string | null;
   onDismissError: () => void;
+  /** How many unfinished todos were last carried forward to today; 0 hides the notice. */
+  carried: number;
+  onDismissCarried: () => void;
+  onShowToday: () => void;
   onCreate: (title: string) => Promise<void>;
   onUpdate: (id: string, patch: TodoPatch) => Promise<void>;
   onMove: (id: string, toDate: string) => Promise<void>;
@@ -55,6 +59,9 @@ export function TodoPane({
   recentProjects,
   error,
   onDismissError,
+  carried,
+  onDismissCarried,
+  onShowToday,
   onCreate,
   onUpdate,
   onMove,
@@ -108,6 +115,35 @@ export function TodoPane({
           >
             Dismiss
           </button>
+        </p>
+      ) : null}
+      {carried > 0 ? (
+        <p
+          className="notice"
+          role="status"
+        >
+          <span>
+            Moved {carried} unfinished {carried === 1 ? "todo" : "todos"} to
+            today.
+          </span>
+          <span className="notice-actions">
+            {selected !== today ? (
+              <button
+                type="button"
+                className="text-button"
+                onClick={onShowToday}
+              >
+                Show
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="text-button"
+              onClick={onDismissCarried}
+            >
+              Dismiss
+            </button>
+          </span>
         </p>
       ) : null}
       {canAdd ? (

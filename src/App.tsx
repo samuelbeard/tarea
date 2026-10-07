@@ -47,6 +47,7 @@ function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [carried, setCarried] = useState(0);
   const [booting, setBooting] = useState(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [focusAddRequest, setFocusAddRequest] = useState(0);
@@ -68,6 +69,7 @@ function App() {
   const reload = useCallback(async (day: string) => {
     const token = ++request.current;
     const prepared = await prepareToday();
+    if (prepared.moved > 0) setCarried(prepared.moved);
     if (request.current !== token) return prepared.today;
     setToday(prepared.today);
     todayRef.current = prepared.today;
@@ -97,6 +99,7 @@ function App() {
         setLibraryPath(path);
         const prepared = await prepareToday();
         if (cancelled) return;
+        if (prepared.moved > 0) setCarried(prepared.moved);
         setToday(prepared.today);
         todayRef.current = prepared.today;
         setSelected(prepared.today);
@@ -343,6 +346,9 @@ function App() {
           recentProjects={projects}
           error={error}
           onDismissError={() => setError(null)}
+          carried={carried}
+          onDismissCarried={() => setCarried(0)}
+          onShowToday={() => void selectDay(today)}
           onCreate={create}
           onUpdate={update}
           onMove={move}

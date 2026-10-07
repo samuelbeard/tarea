@@ -573,6 +573,24 @@ textarea,
   color: var(--danger);
 }
 
+.notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.notice-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .sidebar {
   min-width: 0;
   min-height: 0;
