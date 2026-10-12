@@ -553,9 +553,7 @@ textarea,
 .text-button:hover,
 .more:hover,
 .notes-toggle:hover,
-.project-button:hover,
-.nav-button:hover,
-.day-cell:hover {
+.project-button:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   padding-left: 5px;
 }
@@ -623,12 +621,35 @@ textarea,
 }
 
 .nav-button {
+  appearance: none;
+  display: grid;
+  place-items: center;
   width: 36px;
   height: 36px;
+  margin: 0;
+  padding: 0;
   border-radius: 999px;
   font-size: 1.4rem;
   line-height: 1;
   color: var(--ink);
+}
+
+.nav-button:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.sidebar-rule {
+  flex-shrink: 0;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--ink) 18%, transparent) 16%,
+    color-mix(in srgb, var(--ink) 18%, transparent) 84%,
+    transparent
+  );
 }
 
 .calendar {
@@ -647,12 +668,22 @@ textarea,
 }
 
 .day-cell {
+  appearance: none;
   position: relative;
+  display: grid;
+  place-items: center;
   aspect-ratio: 1;
+  width: 100%;
+  margin: 0;
   border-radius: 999px;
   padding: 0;
   font-size: 0.82rem;
+  line-height: 1;
   color: var(--ink);
+}
+
+.day-cell:hover:not(.is-selected) {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
 .day-cell.is-outside {
@@ -664,7 +695,8 @@ textarea,
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
-.day-cell.is-selected {
+.day-cell.is-selected,
+.day-cell.is-selected:hover {
   background: var(--accent);
   color: var(--accent-ink);
 }
@@ -677,8 +709,8 @@ textarea,
   border-radius: 50%;
   background: currentColor;
   left: 50%;
-  bottom: 4px;
-  transform: translateX(-50%);
+  bottom: 5px;
+  translate: -50% 0;
 }
 
 .sidebar-note {

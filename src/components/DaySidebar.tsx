@@ -53,6 +53,8 @@ export function DaySidebar({
         </button>
       </div>
 
+      <hr className="sidebar-rule" />
+
       <div className="month-block">
         <div className="month-nav">
           <button
