@@ -22,7 +22,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #141311;
     --panel: #1c1b18;
@@ -34,6 +34,19 @@
     --accent-ink: #14241c;
     --danger: #f0a8a0;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141311;
+  --panel: #1c1b18;
+  --sidebar: #24221e;
+  --ink: #f4efe6;
+  --muted: #b3aa9d;
+  --line: #3a352e;
+  --accent: #8fceb0;
+  --accent-ink: #14241c;
+  --danger: #f0a8a0;
 }
 
 * {
@@ -810,7 +823,8 @@ textarea,
   width: min(480px, calc(100vw - 32px));
 }
 
-.settings-tabs {
+.settings-tabs,
+.segmented {
   display: flex;
   gap: 4px;
   margin-top: 14px;
@@ -819,7 +833,8 @@ textarea,
   background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
-.settings-tabs button {
+.settings-tabs button,
+.segmented label {
   flex: 1;
   padding: 6px 10px;
   border: 0;
@@ -830,7 +845,29 @@ textarea,
   font-weight: 600;
 }
 
-.settings-tabs button.is-active {
+.segmented {
+  margin-top: 8px;
+}
+
+.segmented label {
+  position: relative;
+  text-align: center;
+  cursor: pointer;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented label:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-tabs button.is-active,
+.segmented label:has(:checked) {
   background: var(--panel);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);

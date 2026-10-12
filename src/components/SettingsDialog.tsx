@@ -2,6 +2,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { errorMessage } from "../api";
 import { SHORTCUT_GROUPS, type Shortcut } from "../shortcuts";
+import { getTheme, setTheme, THEMES, type Theme } from "../theme";
 import { Modal } from "./Modal";
 
 export type SettingsTab = "general" | "shortcuts";
@@ -28,6 +29,12 @@ export function SettingsDialog({
   const [tab, setTab] = useState(initialTab);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setThemeState] = useState(getTheme);
+
+  function changeTheme(next: Theme) {
+    setThemeState(next);
+    setTheme(next);
+  }
 
   async function changeFolder() {
     setBusy(true);
@@ -99,45 +106,68 @@ export function SettingsDialog({
         className="settings-panel"
       >
         {tab === "general" ? (
-          <section className="settings-section">
-            <h3>Todos folder</h3>
-            <p className="settings-path">
-              {library ? <code>{library}</code> : "No folder chosen yet."}
-            </p>
-            <p className="settings-help">
-              Tarea uses the <code>Tarea</code> folder inside the folder you
-              choose, and creates one if it's missing. Todos already saved stay
-              where they are.
-            </p>
-            {error ? (
-              <p
-                className="error"
-                role="alert"
-              >
-                {error}
+          <>
+            <section className="settings-section">
+              <h3>Todos folder</h3>
+              <p className="settings-path">
+                {library ? <code>{library}</code> : "No folder chosen yet."}
               </p>
-            ) : null}
-            <div className="settings-row">
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={() => void changeFolder()}
-              >
-                {library ? "Change folder…" : "Choose folder…"}
-              </button>
-              {library ? (
+              <p className="settings-help">
+                Tarea uses the <code>Tarea</code> folder inside the folder you
+                choose, and creates one if it's missing. Todos already saved stay
+                where they are.
+              </p>
+              {error ? (
+                <p
+                  className="error"
+                  role="alert"
+                >
+                  {error}
+                </p>
+              ) : null}
+              <div className="settings-row">
                 <button
                   type="button"
                   className="secondary"
                   disabled={busy}
-                  onClick={() => void reveal()}
+                  onClick={() => void changeFolder()}
                 >
-                  Show in Finder
+                  {library ? "Change folder…" : "Choose folder…"}
                 </button>
-              ) : null}
-            </div>
-          </section>
+                {library ? (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void reveal()}
+                  >
+                    Show in Finder
+                  </button>
+                ) : null}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3 id="settings-appearance">Appearance</h3>
+              <div
+                className="segmented"
+                role="radiogroup"
+                aria-labelledby="settings-appearance"
+              >
+                {THEMES.map((item) => (
+                  <label key={item.id}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      value={item.id}
+                      checked={theme === item.id}
+                      onChange={() => changeTheme(item.id)}
+                    />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </section>
+          </>
         ) : (
           SHORTCUT_GROUPS.map((group) => (
             <section
