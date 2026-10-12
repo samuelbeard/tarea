@@ -12,6 +12,7 @@ import {
   moveTodo,
   prepareToday,
   recentProjects,
+  saveNote,
   setLibrary,
   updateTodo,
 } from "./api";
@@ -45,6 +46,7 @@ function App() {
   );
   const [days, setDays] = useState<string[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
+  const [note, setNote] = useState("");
   const [projects, setProjects] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [carried, setCarried] = useState(0);
@@ -81,7 +83,10 @@ function App() {
     if (request.current !== token) return prepared.today;
     setDays(nextDays);
     setProjects(recent);
-    if (selectedRef.current === day) setTodos(items.todos);
+    if (selectedRef.current === day) {
+      setTodos(items.todos);
+      setNote(items.note);
+    }
     reportProblems(prepared.problems, items.problems);
     return prepared.today;
   }, [reportProblems]);
@@ -113,6 +118,7 @@ function App() {
         if (cancelled) return;
         setDays(nextDays);
         setTodos(items.todos);
+        setNote(items.note);
         setProjects(recent);
         reportProblems(prepared.problems, items.problems);
       } catch (err) {
@@ -224,6 +230,7 @@ function App() {
       const items = await loadDay(iso);
       if (request.current !== token) return;
       setTodos(items.todos);
+      setNote(items.note);
       reportProblems(items.problems);
     } catch (err) {
       if (request.current === token) setError(errorMessage(err));
@@ -248,7 +255,9 @@ function App() {
     setSelected(preparedDay);
     selectedRef.current = preparedDay;
     setCursor(cursorFromISO(preparedDay));
-    setTodos((await loadDay(preparedDay)).todos);
+    const items = await loadDay(preparedDay);
+    setTodos(items.todos);
+    setNote(items.note);
   }
 
   async function chooseFolder() {
@@ -275,6 +284,17 @@ function App() {
     const day = selectedRef.current;
     try {
       await updateTodo(day, id, patch);
+      await reload(day);
+    } catch (err) {
+      setError(errorMessage(err));
+      throw err;
+    }
+  }
+
+  async function updateNote(next: string) {
+    const day = selectedRef.current;
+    try {
+      await saveNote(day, next);
       await reload(day);
     } catch (err) {
       setError(errorMessage(err));
@@ -343,6 +363,7 @@ function App() {
           selected={selected}
           today={today}
           todos={todos}
+          note={note}
           recentProjects={projects}
           error={error}
           onDismissError={() => setError(null)}
@@ -353,6 +374,7 @@ function App() {
           onUpdate={update}
           onMove={move}
           onDelete={remove}
+          onSaveNote={updateNote}
           focusAddRequest={focusAddRequest}
         />
         <DaySidebar

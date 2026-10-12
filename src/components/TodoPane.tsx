@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { formatLong, formatRelative } from "../dates";
 import { focusFirstTodo } from "../shortcuts";
 import type { Todo, TodoPatch } from "../types";
+import { DayNote } from "./DayNote";
 import { TodoItem } from "./TodoItem";
 
 type TodoPaneProps = {
   selected: string;
   today: string;
   todos: Todo[];
+  note: string;
   recentProjects: string[];
   error: string | null;
   onDismissError: () => void;
@@ -19,6 +21,7 @@ type TodoPaneProps = {
   onUpdate: (id: string, patch: TodoPatch) => Promise<void>;
   onMove: (id: string, toDate: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onSaveNote: (note: string) => Promise<void>;
   /** Bumped to ask for the add field to be focused once it can be. */
   focusAddRequest: number;
 };
@@ -52,10 +55,31 @@ function groupByProject(
   return groups;
 }
 
+function NoteIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function TodoPane({
   selected,
   today,
   todos,
+  note,
   recentProjects,
   error,
   onDismissError,
@@ -66,10 +90,12 @@ export function TodoPane({
   onUpdate,
   onMove,
   onDelete,
+  onSaveNote,
   focusAddRequest,
 }: TodoPaneProps) {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [noteRequest, setNoteRequest] = useState(0);
   const addInputRef = useRef<HTMLInputElement>(null);
   const handledFocusRequest = useRef(focusAddRequest);
   const canAdd = selected >= today;
@@ -101,6 +127,17 @@ export function TodoPane({
       <header className="todo-header">
         <p className="kicker">{formatRelative(selected, today)}</p>
         <h1>{formatLong(selected)}</h1>
+        {note.trim() ? null : (
+          <button
+            type="button"
+            className="note-button"
+            aria-label="Add a note for the day"
+            title="Add a note for the day"
+            onClick={() => setNoteRequest((count) => count + 1)}
+          >
+            <NoteIcon />
+          </button>
+        )}
       </header>
       {error ? (
         <p
@@ -173,6 +210,12 @@ export function TodoPane({
         </form>
       ) : null}
       <div className="todo-scroll">
+        <DayNote
+          day={selected}
+          note={note}
+          onSave={onSaveNote}
+          editRequest={noteRequest}
+        />
         {todos.length === 0 ? (
           <p className="empty">Nothing scheduled.</p>
         ) : null}

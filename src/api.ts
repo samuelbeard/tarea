@@ -44,6 +44,10 @@ export function updateTodo(date: string, id: string, patch: TodoPatch): Promise<
   return invoke("update_todo", { date, id, ...patch });
 }
 
+export function saveNote(date: string, note: string): Promise<string> {
+  return invoke("save_note", { date, note });
+}
+
 export function deleteTodo(date: string, id: string): Promise<void> {
   return invoke("delete_todo", { date, id });
 }

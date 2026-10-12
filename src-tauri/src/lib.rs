@@ -80,6 +80,7 @@ pub fn run() {
             todo::update_todo,
             todo::move_todo,
             todo::delete_todo,
+            todo::save_note,
             todo::recent_projects,
         ])
         .run(tauri::generate_context!())

@@ -27,4 +27,6 @@ export type PrepareToday = {
 export type DayTodos = {
   todos: Todo[];
   problems: string[];
+  /** The day's own markdown note, empty when it has none. */
+  note: string;
 };

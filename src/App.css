@@ -1007,3 +1007,48 @@ kbd {
     max-height: 46vh;
   }
 }
+
+.day-note,
+.day-note-editor {
+  margin: 10px 0 14px;
+}
+
+.day-note {
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+.day-note:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.todo-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
+
+.todo-header > :not(.note-button) {
+  grid-column: 1;
+}
+
+.note-button {
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: end;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  border: none;
+  transition: 0.2s;
+}
+
+.note-button:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}

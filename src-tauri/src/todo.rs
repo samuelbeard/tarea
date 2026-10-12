@@ -33,6 +33,9 @@ pub struct Todo {
 
 const KNOWN_KEYS: [&str; 5] = ["id", "title", "status", "created", "project"];
 
+/// The day's own notes, kept beside its todos. It is plain markdown with no frontmatter.
+const NOTE_FILE: &str = "note.md";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct Frontmatter {
     id: String,
@@ -56,6 +59,7 @@ pub struct PrepareToday {
 pub struct DayTodos {
     pub todos: Vec<Todo>,
     pub problems: Vec<String>,
+    pub note: String,
 }
 
 pub struct TodoPatch {
@@ -126,6 +130,9 @@ fn slugify(title: &str) -> String {
 }
 
 fn name_available(dir: &Path, name: &str, current: Option<&str>) -> bool {
+    if name == NOTE_FILE {
+        return false;
+    }
     if current == Some(name) {
         return true;
     }
@@ -225,6 +232,7 @@ fn parse_document(raw: &str) -> Result<(Frontmatter, Mapping, String), String> {
     Ok((meta, extra, notes))
 }
 
+/// Lists a day's todo files, leaving out the day's note.
 fn markdown_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if !dir.exists() {
         return Ok(Vec::new());
@@ -236,7 +244,8 @@ fn markdown_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
         let entry = entry.map_err(|err| format!("Could not read {}: {err}", dir.display()))?;
         let path = entry.path();
         let is_md = path.extension().and_then(|ext| ext.to_str()) == Some("md");
-        if is_md && path.is_file() {
+        let is_note = path.file_name().is_some_and(|name| name == NOTE_FILE);
+        if is_md && !is_note && path.is_file() {
             files.push(path);
         }
     }
@@ -278,13 +287,17 @@ fn write_todo(path: &Path, todo: &Todo) -> Result<(), String> {
         project: todo.project.clone(),
     };
     let raw = render(&meta, &todo.extra, &todo.notes)?;
+    write_atomic(path, &raw)
+}
+
+/// Writes through a temp file so an interrupted save never leaves a half-written file.
+fn write_atomic(path: &Path, raw: &str) -> Result<(), String> {
     let tmp = path.with_extension("md.tmp");
-    fs::write(&tmp, &raw).map_err(|err| format!("Could not write {}: {err}", path.display()))?;
+    fs::write(&tmp, raw).map_err(|err| format!("Could not write {}: {err}", path.display()))?;
     fs::rename(&tmp, path).map_err(|err| {
         let _ = fs::remove_file(&tmp);
         format!("Could not write {}: {err}", path.display())
-    })?;
-    Ok(())
+    })
 }
 
 fn find_todo(library: &Path, day: &str, id: &str) -> Result<Todo, String> {
@@ -311,7 +324,7 @@ fn move_file(src: &Path, dest: &Path) -> Result<(), String> {
 }
 
 fn remove_dir_if_empty(dir: &Path) -> Result<(), String> {
-    if !dir.exists() || !markdown_files(dir)?.is_empty() {
+    if !dir.exists() || !markdown_files(dir)?.is_empty() || dir.join(NOTE_FILE).exists() {
         return Ok(());
     }
     let mut entries =
@@ -355,7 +368,7 @@ fn list_day_names(library: &Path) -> Result<Vec<String>, String> {
         if parse_day(&name).is_err() {
             continue;
         }
-        if markdown_files(&entry.path())?.is_empty() {
+        if markdown_files(&entry.path())?.is_empty() && !entry.path().join(NOTE_FILE).is_file() {
             let _ = remove_dir_if_empty(&entry.path());
             continue;
         }
@@ -408,7 +421,51 @@ fn scan_day(library: &Path, day: &str) -> Result<DayTodos, String> {
         todos.push(todo);
     }
     todos.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(DayTodos { todos, problems })
+    let note = match read_note(&dir) {
+        Ok(note) => note,
+        Err(err) => {
+            problems.push(err);
+            String::new()
+        }
+    };
+    Ok(DayTodos {
+        todos,
+        problems,
+        note,
+    })
+}
+
+fn read_note(dir: &Path) -> Result<String, String> {
+    let path = dir.join(NOTE_FILE);
+    if !path.is_file() {
+        return Ok(String::new());
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|err| format!("Could not read {}: {err}", path.display()))?;
+    let raw = raw.replace("\r\n", "\n");
+    Ok(raw
+        .strip_prefix('\u{feff}')
+        .unwrap_or(&raw)
+        .trim()
+        .to_string())
+}
+
+/// Saves the day's note, or removes it when the note is blank so empty days don't linger.
+fn write_note(library: &Path, day: &str, note: &str) -> Result<String, String> {
+    let dir = day_dir(library, day)?;
+    let note = note.trim().to_string();
+    let path = dir.join(NOTE_FILE);
+    if note.is_empty() {
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|err| format!("Could not remove {}: {err}", path.display()))?;
+        }
+        remove_dir_if_empty(&dir)?;
+        return Ok(note);
+    }
+    fs::create_dir_all(&dir).map_err(|err| format!("Could not create {}: {err}", dir.display()))?;
+    write_atomic(&path, &format!("{note}\n"))?;
+    Ok(note)
 }
 
 fn read_day(library: &Path, day: &str) -> Result<Vec<Todo>, String> {
@@ -653,6 +710,12 @@ pub fn update_todo(
             project,
         },
     )
+}
+
+#[tauri::command]
+pub fn save_note(app: tauri::AppHandle, date: String, note: String) -> Result<String, String> {
+    let library = crate::library::require_library(&app)?;
+    write_note(&library, &date, &note)
 }
 
 #[tauri::command]
@@ -1180,6 +1243,48 @@ mod tests {
 
         remove_todo(library.path(), "2026-10-07", &alone.id, discard).unwrap();
         assert!(!library.path().join("2026-10-07").exists());
+    }
+
+    #[test]
+    fn day_notes_live_beside_todos_without_becoming_todos() {
+        let library = TempDir::new("note");
+        let today = day(2026, 10, 6);
+        let dir = library.path().join("2026-10-05");
+
+        let saved = write_note(library.path(), "2026-10-05", "  # Plan\n\n- call Sam  \n").unwrap();
+        assert_eq!(saved, "# Plan\n\n- call Sam");
+        assert_eq!(
+            fs::read_to_string(dir.join("note.md")).unwrap(),
+            "# Plan\n\n- call Sam\n"
+        );
+        let scanned = scan_day(library.path(), "2026-10-05").unwrap();
+        assert!(scanned.todos.is_empty());
+        assert!(scanned.problems.is_empty());
+        assert_eq!(scanned.note, "# Plan\n\n- call Sam");
+        assert_eq!(list_day_names(library.path()).unwrap(), vec!["2026-10-05"]);
+
+        let todo = add_todo(library.path(), "2026-10-06", "Note", None, today).unwrap();
+        assert_ne!(todo.filename, "note.md");
+
+        // A day keeps its note when its last todo rolls forward.
+        let carried = add_todo(
+            library.path(),
+            "2026-10-05",
+            "Carry",
+            None,
+            day(2026, 10, 5),
+        )
+        .unwrap();
+        let (moved, problems) = roll_forward(library.path(), today).unwrap();
+        assert_eq!(moved, 1);
+        assert!(problems.is_empty());
+        assert!(!dir.join(&carried.filename).exists());
+        assert!(dir.join("note.md").is_file());
+        assert_eq!(scan_day(library.path(), "2026-10-06").unwrap().note, "");
+
+        write_note(library.path(), "2026-10-05", "   ").unwrap();
+        assert!(!dir.exists());
+        assert_eq!(list_day_names(library.path()).unwrap(), vec!["2026-10-06"]);
     }
 
     #[test]

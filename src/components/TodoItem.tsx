@@ -1,19 +1,16 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { addDays, formatShort } from "../dates";
 import { todoElements } from "../shortcuts";
 import type { Status, Todo, TodoPatch } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Markdown } from "./Markdown";
 import { normalizeProject, ProjectSuggestions } from "./ProjectSuggestions";
 
 type MenuPoint = { x: number; y: number };
@@ -475,29 +472,7 @@ export function TodoItem({
                   }
                 }}
               >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a: ({ href, children }) => (
-                      <a
-                        href={href}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          if (!href) return;
-                          void openUrl(href).catch(() => {
-                            window.open(href, "_blank", "noopener");
-                          });
-                        }}
-                      >
-                        {children}
-                      </a>
-                    ),
-                  }}
-                >
-                  {todo.notes}
-                </ReactMarkdown>
+                <Markdown>{todo.notes}</Markdown>
               </div>
             ) : null}
             {notesOpen && !editingNotes && !todo.notes.trim() ? (
