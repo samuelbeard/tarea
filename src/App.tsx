@@ -12,6 +12,7 @@ import {
   moveTodo,
   prepareToday,
   recentProjects,
+  reorderTodos,
   saveNote,
   setLibrary,
   updateTodo,
@@ -324,6 +325,26 @@ function App() {
     }
   }
 
+  async function reorder(ids: string[]) {
+    const day = selectedRef.current;
+    // Drop any reload already in flight so it can't briefly put back the old order.
+    request.current++;
+    const rank = new Map(ids.map((id, index) => [id, index]));
+    setTodos((current) =>
+      [...current].sort(
+        (a, b) =>
+          (rank.get(a.id) ?? ids.length) - (rank.get(b.id) ?? ids.length),
+      ),
+    );
+    try {
+      await reorderTodos(day, ids);
+      await reload(day);
+    } catch (err) {
+      setError(errorMessage(err));
+      void reload(day).catch(() => undefined);
+    }
+  }
+
   if (booting) {
     return (
       <div className="frame">
@@ -373,6 +394,7 @@ function App() {
           onCreate={create}
           onUpdate={update}
           onMove={move}
+          onReorder={reorder}
           onDelete={remove}
           onSaveNote={updateNote}
           focusAddRequest={focusAddRequest}

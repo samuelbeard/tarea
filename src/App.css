@@ -380,12 +380,13 @@ textarea,
   cursor: default;
 }
 
+/* The side padding leaves a gutter for the drag handles. */
 .todo-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  margin: 8px -8px 0;
-  padding: 0 8px 16px;
+  margin: 8px -28px 0;
+  padding: 0 28px 16px;
 }
 
 .empty {
@@ -394,6 +395,7 @@ textarea,
 }
 
 .todo {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
@@ -411,6 +413,52 @@ textarea,
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.drag-handle {
+  position: absolute;
+  top: 12px;
+  left: -24px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: grab;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity 0.12s ease;
+}
+
+.todo:hover .drag-handle,
+.todo:focus-visible .drag-handle,
+.todo.is-dragging .drag-handle {
+  opacity: 1;
+}
+
+.drag-handle:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.project-group.is-reordering,
+.project-group.is-reordering .drag-handle {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.project-group.is-reordering .todo:not(.is-dragging) .drag-handle {
+  opacity: 0;
+}
+
+.todo.is-dragging {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
 .todo input[type="checkbox"] {
@@ -1068,6 +1116,16 @@ kbd {
 
   .todo-pane {
     padding: 20px 16px 12px;
+  }
+
+  .todo-scroll {
+    margin: 8px -16px 0;
+    padding: 0 16px 16px;
+  }
+
+  .drag-handle {
+    left: -17px;
+    width: 16px;
   }
 
   .sidebar {

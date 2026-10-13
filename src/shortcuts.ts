@@ -40,6 +40,14 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       { label: "Previous / next todo", combos: [["↑"], ["↓"]], joiner: "/" },
       { label: "Complete or reopen", combos: [["Space"]] },
+      {
+        label: "Move up / down",
+        combos: [
+          ["⌘", "↑"],
+          ["⌘", "↓"],
+        ],
+        joiner: "/",
+      },
       { label: "Rename", combos: [["Return"]] },
       { label: "Move to Trash…", combos: [["⌘", "⌫"]] },
       { label: "Deselect", combos: [["Esc"]] },

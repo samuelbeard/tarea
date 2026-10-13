@@ -52,6 +52,11 @@ export function deleteTodo(date: string, id: string): Promise<void> {
   return invoke("delete_todo", { date, id });
 }
 
+/** Saves the day's order; `ids` lists its todos top to bottom. */
+export function reorderTodos(date: string, ids: string[]): Promise<Todo[]> {
+  return invoke("reorder_todos", { date, ids });
+}
+
 export function moveTodo(id: string, fromDate: string, toDate: string): Promise<Todo> {
   return invoke("move_todo", { id, fromDate, toDate });
 }

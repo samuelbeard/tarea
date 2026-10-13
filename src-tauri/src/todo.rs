@@ -26,12 +26,16 @@ pub struct Todo {
     pub notes: String,
     pub filename: String,
     pub day: String,
+    /// Position within the day, set once the day has been reordered. Unordered todos follow,
+    /// oldest first.
+    #[serde(skip)]
+    pub order: Option<u32>,
     /// Frontmatter keys this app doesn't know about, kept so saving doesn't drop them.
     #[serde(skip)]
     pub extra: Mapping,
 }
 
-const KNOWN_KEYS: [&str; 5] = ["id", "title", "status", "created", "project"];
+const KNOWN_KEYS: [&str; 6] = ["id", "title", "status", "created", "project", "order"];
 
 /// The day's own notes, kept beside its todos. It is plain markdown with no frontmatter.
 const NOTE_FILE: &str = "note.md";
@@ -44,6 +48,19 @@ struct Frontmatter {
     created: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     project: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_order"
+    )]
+    order: Option<u32>,
+}
+
+/// Reads `order` without failing the whole file when it has been hand-edited into nonsense.
+fn lenient_order<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Option<u32>, D::Error> {
+    Ok(Value::deserialize(de)?
+        .as_u64()
+        .and_then(|n| u32::try_from(n).ok()))
 }
 
 #[derive(Debug, Serialize)]
@@ -264,6 +281,7 @@ fn read_todo(path: &Path, day: &str) -> Result<Todo, String> {
         status: meta.status,
         created: meta.created,
         project: meta.project.and_then(|project| clean_project(&project)),
+        order: meta.order,
         notes,
         filename: path
             .file_name()
@@ -285,6 +303,7 @@ fn write_todo(path: &Path, todo: &Todo) -> Result<(), String> {
         status: todo.status,
         created: todo.created.clone(),
         project: todo.project.clone(),
+        order: todo.order,
     };
     let raw = render(&meta, &todo.extra, &todo.notes)?;
     write_atomic(path, &raw)
@@ -344,11 +363,17 @@ fn relocate(library: &Path, todo: &Todo, to_day: &str) -> Result<Todo, String> {
     let dest = to_dir.join(&filename);
     move_file(&from_dir.join(&todo.filename), &dest)?;
     remove_dir_if_empty(&from_dir)?;
-    Ok(Todo {
+    let moved = Todo {
         filename,
         day: to_day.to_string(),
+        order: None,
         ..todo.clone()
-    })
+    };
+    // Its place on the old day means nothing on the new one, so it joins the end there.
+    if todo.order.is_some() {
+        write_todo(&dest, &moved)?;
+    }
+    Ok(moved)
 }
 
 fn list_day_names(library: &Path) -> Result<Vec<String>, String> {
@@ -420,7 +445,9 @@ fn scan_day(library: &Path, day: &str) -> Result<DayTodos, String> {
         }
         todos.push(todo);
     }
-    todos.sort_by(|a, b| a.id.cmp(&b.id));
+    todos.sort_by(|a, b| {
+        (a.order.is_none(), a.order, &a.id).cmp(&(b.order.is_none(), b.order, &b.id))
+    });
     let note = match read_note(&dir) {
         Ok(note) => note,
         Err(err) => {
@@ -497,6 +524,7 @@ fn add_todo(
         notes: String::new(),
         filename,
         day: day.to_string(),
+        order: None,
         extra: Mapping::new(),
     };
     write_todo(&dir.join(&todo.filename), &todo)?;
@@ -544,6 +572,27 @@ fn shift_todo(
     }
     let todo = find_todo(library, from_day, id)?;
     relocate(library, &todo, to_day)
+}
+
+/// Puts a day's todos in the order of `ids`. Todos missing from `ids`, such as ones added by
+/// another app since the list was shown, keep their place after the listed ones. Only files whose
+/// position changed are rewritten.
+fn reorder_day(library: &Path, day: &str, ids: &[String]) -> Result<Vec<Todo>, String> {
+    let dir = day_dir(library, day)?;
+    let mut todos = read_day(library, day)?;
+    todos.sort_by_key(|todo| {
+        ids.iter()
+            .position(|id| id == &todo.id)
+            .unwrap_or(usize::MAX)
+    });
+    for (index, todo) in todos.iter_mut().enumerate() {
+        let order = Some(index as u32 + 1);
+        if todo.order != order {
+            todo.order = order;
+            write_todo(&dir.join(&todo.filename), todo)?;
+        }
+    }
+    Ok(todos)
 }
 
 /// Sends a todo's file to the system Trash so a mistaken delete can be recovered.
@@ -710,6 +759,16 @@ pub fn update_todo(
             project,
         },
     )
+}
+
+#[tauri::command]
+pub fn reorder_todos(
+    app: tauri::AppHandle,
+    date: String,
+    ids: Vec<String>,
+) -> Result<Vec<Todo>, String> {
+    let library = crate::library::require_library(&app)?;
+    reorder_day(&library, &date, &ids)
 }
 
 #[tauri::command]
@@ -1209,6 +1268,54 @@ mod tests {
         assert!(raw.contains("priority: 2"));
         assert!(raw.contains("title: Renamed"));
         assert!(raw.ends_with("Body\n"));
+    }
+
+    #[test]
+    fn reordering_persists_and_a_move_rejoins_at_the_end() {
+        let library = TempDir::new("reorder");
+        let today = day(2026, 10, 6);
+        let a = add_todo(library.path(), "2026-10-07", "A", None, today).unwrap();
+        let b = add_todo(library.path(), "2026-10-07", "B", None, today).unwrap();
+        let c = add_todo(library.path(), "2026-10-07", "C", None, today).unwrap();
+        let ids = |todos: Vec<Todo>| todos.into_iter().map(|todo| todo.id).collect::<Vec<_>>();
+
+        reorder_day(library.path(), "2026-10-07", &[c.id.clone(), a.id.clone()]).unwrap();
+        assert_eq!(
+            ids(read_day(library.path(), "2026-10-07").unwrap()),
+            [c.id.clone(), a.id.clone(), b.id.clone()]
+        );
+        let raw = fs::read_to_string(library.path().join("2026-10-07").join(&c.filename)).unwrap();
+        assert!(raw.contains("order: 1"));
+
+        // A new todo lands after the ordered ones.
+        let d = add_todo(library.path(), "2026-10-07", "D", None, today).unwrap();
+        let moved = shift_todo(library.path(), &c.id, "2026-10-07", "2026-10-08", today).unwrap();
+        assert_eq!(moved.order, None);
+        let e = add_todo(library.path(), "2026-10-08", "E", None, today).unwrap();
+        reorder_day(library.path(), "2026-10-08", &[e.id.clone()]).unwrap();
+        assert_eq!(
+            ids(read_day(library.path(), "2026-10-07").unwrap()),
+            [a.id.clone(), b.id.clone(), d.id.clone()]
+        );
+        assert_eq!(
+            ids(read_day(library.path(), "2026-10-08").unwrap()),
+            [e.id.clone(), c.id.clone()]
+        );
+    }
+
+    #[test]
+    fn a_nonsense_order_is_ignored_rather_than_breaking_the_file() {
+        let library = TempDir::new("bad-order");
+        let dir = library.path().join("2026-10-06");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("odd.md"),
+            "---\nid: odd-1\ntitle: Odd\nstatus: incomplete\ncreated: 2026-10-06\norder: soon\n---\n",
+        )
+        .unwrap();
+        let todos = read_day(library.path(), "2026-10-06").unwrap();
+        assert_eq!(todos.len(), 1);
+        assert_eq!(todos[0].order, None);
     }
 
     #[test]

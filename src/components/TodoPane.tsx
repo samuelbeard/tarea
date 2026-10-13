@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { formatLong, formatRelative } from "../dates";
 import { focusFirstTodo } from "../shortcuts";
 import type { Todo, TodoPatch } from "../types";
@@ -20,15 +27,20 @@ type TodoPaneProps = {
   onCreate: (title: string) => Promise<void>;
   onUpdate: (id: string, patch: TodoPatch) => Promise<void>;
   onMove: (id: string, toDate: string) => Promise<void>;
+  /** Saves the day's order; `ids` lists every todo top to bottom. */
+  onReorder: (ids: string[]) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onSaveNote: (note: string) => Promise<void>;
   /** Bumped to ask for the add field to be focused once it can be. */
   focusAddRequest: number;
 };
 
-function groupByProject(
-  todos: Todo[],
-): { project: string | null; todos: Todo[] }[] {
+type Group = { project: string | null; todos: Todo[] };
+
+/** A drag in progress: the todo being dragged and its group's order as previewed. */
+type Drag = { id: string; ids: string[] };
+
+function groupByProject(todos: Todo[]): Group[] {
   const untagged: Todo[] = [];
   const order: string[] = [];
   const grouped = new Map<string, Todo[]>();
@@ -46,7 +58,7 @@ function groupByProject(
       grouped.set(project, [todo]);
     }
   }
-  const groups: { project: string | null; todos: Todo[] }[] = [];
+  const groups: Group[] = [];
   if (untagged.length > 0) groups.push({ project: null, todos: untagged });
   for (const project of order) {
     const items = grouped.get(project);
@@ -89,6 +101,7 @@ export function TodoPane({
   onCreate,
   onUpdate,
   onMove,
+  onReorder,
   onDelete,
   onSaveNote,
   focusAddRequest,
@@ -105,7 +118,97 @@ export function TodoPane({
     handledFocusRequest.current = focusAddRequest;
     addInputRef.current?.focus();
   }, [canAdd, focusAddRequest]);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const refocusId = useRef<string | null>(null);
   const groups = groupByProject(todos);
+
+  // Moving a row can drop its focus, so a keyboard move puts it back.
+  useLayoutEffect(() => {
+    const id = refocusId.current;
+    if (!id) return;
+    refocusId.current = null;
+    document
+      .querySelector<HTMLElement>(`.todo[data-todo-id="${CSS.escape(id)}"]`)
+      ?.focus();
+  }, [todos]);
+
+  function groupOf(id: string) {
+    return groups.find((group) => group.todos.some((todo) => todo.id === id));
+  }
+
+  /** The whole day's order with one group's todos replaced by `ids`. Groups keep their places. */
+  function dayOrder(target: Group, ids: string[]) {
+    return groups.flatMap((group) =>
+      group === target ? ids : group.todos.map((todo) => todo.id),
+    );
+  }
+
+  /** Moves a todo up or down within its project. */
+  function shift(id: string, delta: number) {
+    const group = groupOf(id);
+    if (!group) return;
+    const ids = group.todos.map((todo) => todo.id);
+    const from = ids.indexOf(id);
+    const to = from + delta;
+    if (to < 0 || to >= ids.length) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    refocusId.current = id;
+    void onReorder(dayOrder(group, ids));
+  }
+
+  /** Drags a todo by its handle. It can only land among the todos of its own project. */
+  function startDrag(id: string, event: ReactPointerEvent<HTMLElement>) {
+    if (event.button !== 0) return;
+    const group = groupOf(id);
+    const section = event.currentTarget.closest<HTMLElement>(".project-group");
+    if (!group || !section || group.todos.length < 2) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const original = group.todos.map((todo) => todo.id);
+    const others = original.filter((other) => other !== id);
+    let current = original;
+    setDrag({ id, ids: original });
+
+    const onPointerMove = (move: PointerEvent) => {
+      const rows = Array.from(
+        section.querySelectorAll<HTMLElement>(":scope > .todo"),
+      ).filter((row) => row.dataset.todoId !== id);
+      const index = rows.filter((row) => {
+        const rect = row.getBoundingClientRect();
+        return rect.top + rect.height / 2 < move.clientY;
+      }).length;
+      const next = [...others.slice(0, index), id, ...others.slice(index)];
+      if (next.join() === current.join()) return;
+      current = next;
+      setDrag({ id, ids: next });
+    };
+    const finish = (commit: boolean) => {
+      handle.removeEventListener("pointermove", onPointerMove);
+      handle.removeEventListener("pointerup", onPointerUp);
+      handle.removeEventListener("pointercancel", onPointerCancel);
+      setDrag(null);
+      if (commit && current.join() !== original.join()) {
+        void onReorder(dayOrder(group, current));
+      }
+    };
+    const onPointerUp = () => finish(true);
+    const onPointerCancel = () => finish(false);
+    handle.addEventListener("pointermove", onPointerMove);
+    handle.addEventListener("pointerup", onPointerUp);
+    handle.addEventListener("pointercancel", onPointerCancel);
+  }
+
+  /** A group's todos, in the previewed order while one of them is being dragged. */
+  function shownTodos(group: Group) {
+    if (!drag || !group.todos.some((todo) => todo.id === drag.id)) {
+      return group.todos;
+    }
+    return drag.ids.flatMap((id) => {
+      const todo = group.todos.find((item) => item.id === id);
+      return todo ? [todo] : [];
+    });
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -222,17 +325,25 @@ export function TodoPane({
         {groups.map((group) => (
           <section
             key={group.project ? `project:${group.project}` : "untagged"}
-            className="project-group"
+            className={
+              drag && group.todos.some((todo) => todo.id === drag.id)
+                ? "project-group is-reordering"
+                : "project-group"
+            }
           >
             {group.project ? (
               <h2 className="project-heading">{group.project}</h2>
             ) : null}
-            {group.todos.map((todo) => (
+            {shownTodos(group).map((todo) => (
               <TodoItem
                 key={todo.id}
                 todo={todo}
                 today={today}
                 recentProjects={recentProjects}
+                canReorder={group.todos.length > 1}
+                dragging={drag?.id === todo.id}
+                onDragStart={startDrag}
+                onShift={shift}
                 onUpdate={onUpdate}
                 onMove={onMove}
                 onDelete={onDelete}

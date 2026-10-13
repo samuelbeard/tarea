@@ -79,6 +79,7 @@ pub fn run() {
             todo::create_todo,
             todo::update_todo,
             todo::move_todo,
+            todo::reorder_todos,
             todo::delete_todo,
             todo::save_note,
             todo::recent_projects,

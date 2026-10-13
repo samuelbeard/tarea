@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { addDays, formatShort } from "../dates";
@@ -55,10 +56,39 @@ function ProjectIcon() {
   );
 }
 
+function GripIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      aria-hidden="true"
+    >
+      {[9, 15].flatMap((x) =>
+        [6, 12, 18].map((y) => (
+          <circle
+            key={`${x}-${y}`}
+            cx={x}
+            cy={y}
+            r="1.6"
+            fill="currentColor"
+          />
+        )),
+      )}
+    </svg>
+  );
+}
+
 type TodoItemProps = {
   todo: Todo;
   today: string;
   recentProjects: string[];
+  /** False when the todo is alone in its project, so there is nowhere to move it. */
+  canReorder: boolean;
+  dragging: boolean;
+  onDragStart: (id: string, event: ReactPointerEvent<HTMLElement>) => void;
+  /** Moves the todo up (-1) or down (1) within its project. */
+  onShift: (id: string, delta: number) => void;
   onUpdate: (id: string, patch: TodoPatch) => Promise<void>;
   onMove: (id: string, toDate: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -68,6 +98,10 @@ export function TodoItem({
   todo,
   today,
   recentProjects,
+  canReorder,
+  dragging,
+  onDragStart,
+  onShift,
   onUpdate,
   onMove,
   onDelete,
@@ -251,6 +285,9 @@ export function TodoItem({
       if (key === "Backspace" || key === "Delete") {
         event.preventDefault();
         setConfirmingDelete(true);
+      } else if (key === "ArrowUp" || key === "ArrowDown") {
+        event.preventDefault();
+        onShift(todo.id, key === "ArrowUp" ? -1 : 1);
       }
       return;
     }
@@ -303,6 +340,7 @@ export function TodoItem({
     todo.status === "complete" ? "is-complete" : "",
     todo.status === "cancelled" ? "is-cancelled" : "",
     editingProject ? "is-editing-project" : "",
+    dragging ? "is-dragging" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -311,6 +349,7 @@ export function TodoItem({
     <article
       ref={articleRef}
       className={className}
+      data-todo-id={todo.id}
       tabIndex={0}
       aria-label={todo.title}
       onKeyDown={onRowKeyDown}
@@ -319,6 +358,18 @@ export function TodoItem({
         openMenu(event.clientX, event.clientY);
       }}
     >
+      {canReorder ? (
+        <button
+          type="button"
+          className="drag-handle"
+          tabIndex={-1}
+          aria-label={`Reorder ${todo.title}`}
+          title="Drag to reorder"
+          onPointerDown={(event) => onDragStart(todo.id, event)}
+        >
+          <GripIcon />
+        </button>
+      ) : null}
       <input
         type="checkbox"
         checked={todo.status === "complete"}
