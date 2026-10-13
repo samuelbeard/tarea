@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { ChevronRight, Folder, GripVertical } from "lucide-react";
 import { addDays, formatShort } from "../dates";
 import { todoElements } from "../shortcuts";
 import type { Status, Todo, TodoPatch } from "../types";
@@ -15,69 +16,6 @@ import { Markdown } from "./Markdown";
 import { normalizeProject, ProjectSuggestions } from "./ProjectSuggestions";
 
 type MenuPoint = { x: number; y: number };
-
-function ChevronIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      aria-hidden="true"
-    >
-      <path
-        d="M9 6l6 6-6 6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ProjectIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      aria-hidden="true"
-    >
-      <path
-        d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function GripIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      aria-hidden="true"
-    >
-      {[9, 15].flatMap((x) =>
-        [6, 12, 18].map((y) => (
-          <circle
-            key={`${x}-${y}`}
-            cx={x}
-            cy={y}
-            r="1.6"
-            fill="currentColor"
-          />
-        )),
-      )}
-    </svg>
-  );
-}
 
 type TodoItemProps = {
   todo: Todo;
@@ -403,7 +341,7 @@ export function TodoItem({
           title="Drag to reorder"
           onPointerDown={(event) => onDragStart(todo.id, event)}
         >
-          <GripIcon />
+          <GripVertical size={14} aria-hidden="true" />
         </button>
       ) : null}
       <input
@@ -425,7 +363,7 @@ export function TodoItem({
             }
             onClick={toggleNotes}
           >
-            <ChevronIcon />
+            <ChevronRight size={14} strokeWidth={2} aria-hidden="true" />
           </button>
           <div className="todo-main">
             {editing ? (
@@ -602,7 +540,7 @@ export function TodoItem({
           }
           onClick={openProjectEditor}
         >
-          <ProjectIcon />
+          <Folder size={16} aria-hidden="true" />
         </button>
         <button
           type="button"

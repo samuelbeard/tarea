@@ -6,6 +6,7 @@ import {
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { PencilLine } from "lucide-react";
 import { formatLong, formatRelative } from "../dates";
 import { focusFirstTodo, todoElements } from "../shortcuts";
 import type { Todo, TodoPatch } from "../types";
@@ -69,26 +70,6 @@ function groupByProject(todos: Todo[]): Group[] {
 
 function headingId(project: string) {
   return `project-${encodeURIComponent(project)}`;
-}
-
-function NoteIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      aria-hidden="true"
-    >
-      <path
-        d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 export function TodoPane({
@@ -270,7 +251,7 @@ export function TodoPane({
             title="Add a note for the day"
             onClick={() => setNoteRequest((count) => count + 1)}
           >
-            <NoteIcon />
+            <PencilLine size={16} aria-hidden="true" />
           </button>
         )}
       </header>

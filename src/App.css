@@ -73,6 +73,7 @@ input,
 textarea {
   font: inherit;
   color: inherit;
+  transition: 0.2s;
 }
 
 button {
@@ -646,7 +647,6 @@ textarea,
 .notes-toggle:hover,
 .project-button:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-  padding-left: 5px;
 }
 
 .error {
@@ -720,8 +720,6 @@ textarea,
   margin: 0;
   padding: 0;
   border-radius: 999px;
-  font-size: 1.4rem;
-  line-height: 1;
   color: var(--ink);
 }
 

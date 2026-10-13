@@ -4,6 +4,7 @@ import {
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   addDays,
   formatLong,
@@ -90,7 +91,7 @@ export function DaySidebar({
           aria-label="Previous day"
           onClick={() => onShiftDay(-1)}
         >
-          ‹
+          <ChevronLeft size={20} aria-hidden="true" />
         </button>
         <p className="day-nav-label">{formatWeekday(selected)}</p>
         <button
@@ -99,7 +100,7 @@ export function DaySidebar({
           aria-label="Next day"
           onClick={() => onShiftDay(1)}
         >
-          ›
+          <ChevronRight size={20} aria-hidden="true" />
         </button>
       </div>
 
@@ -113,7 +114,7 @@ export function DaySidebar({
             aria-label="Previous month"
             onClick={() => onShiftMonth(-1)}
           >
-            ‹
+            <ChevronLeft size={20} aria-hidden="true" />
           </button>
           <p
             className="month-label"
@@ -127,7 +128,7 @@ export function DaySidebar({
             aria-label="Next month"
             onClick={() => onShiftMonth(1)}
           >
-            ›
+            <ChevronRight size={20} aria-hidden="true" />
           </button>
         </div>
         <div
