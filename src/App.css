@@ -357,7 +357,6 @@ button {
 
 .todo-actions {
   display: flex;
-  flex-direction: column;
   align-items: center;
 }
 
@@ -366,16 +365,12 @@ button {
   place-items: center;
   width: 32px;
   height: 32px;
-  max-height: 0;
   padding: 0;
-  overflow: hidden;
   border-radius: 8px;
   color: var(--muted);
   opacity: 0;
   pointer-events: none;
-  transition:
-    opacity 0.12s ease,
-    max-height 0.12s ease;
+  transition: opacity 0.12s ease;
 }
 
 .project-button.has-project {
@@ -385,7 +380,6 @@ button {
 .todo:hover .project-button,
 .todo:focus-within .project-button,
 .todo.is-editing-project .project-button {
-  max-height: 32px;
   opacity: 1;
   pointer-events: auto;
 }

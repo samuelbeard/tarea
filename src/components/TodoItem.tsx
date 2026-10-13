@@ -588,23 +588,6 @@ export function TodoItem({
       </div>
       <div className="todo-actions">
         <button
-          type="button"
-          className="more"
-          aria-label={`Actions for ${todo.title}`}
-          aria-haspopup="dialog"
-          aria-expanded={menu !== null}
-          onClick={(event) => {
-            if (menu) {
-              closeMenu(false);
-              return;
-            }
-            const rect = event.currentTarget.getBoundingClientRect();
-            openMenu(rect.left, rect.bottom + 6, event.currentTarget);
-          }}
-        >
-          ···
-        </button>
-        <button
           ref={projectButtonRef}
           type="button"
           className={
@@ -620,6 +603,23 @@ export function TodoItem({
           onClick={openProjectEditor}
         >
           <ProjectIcon />
+        </button>
+        <button
+          type="button"
+          className="more"
+          aria-label={`Actions for ${todo.title}`}
+          aria-haspopup="dialog"
+          aria-expanded={menu !== null}
+          onClick={(event) => {
+            if (menu) {
+              closeMenu(false);
+              return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(rect.left, rect.bottom + 6, event.currentTarget);
+          }}
+        >
+          ···
         </button>
       </div>
       {menu ? (
