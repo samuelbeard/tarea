@@ -20,16 +20,32 @@ export function DayNote({ day, note, onSave, editRequest }: DayNoteProps) {
   }, [note, editing]);
 
   const handledEditRequest = useRef(editRequest);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  /** Set when the editor is closed from the keyboard, so focus lands on the edit button. */
+  const refocus = useRef(false);
 
   useEffect(() => {
     setEditing(false);
+    refocus.current = false;
   }, [day]);
 
   useEffect(() => {
     if (editRequest === handledEditRequest.current) return;
     handledEditRequest.current = editRequest;
-    setEditing(true);
+    startEditing();
   }, [editRequest]);
+
+  // The button can appear only once the save lands, so this checks after every render.
+  useEffect(() => {
+    if (editing || !refocus.current || !editButtonRef.current) return;
+    refocus.current = false;
+    editButtonRef.current.focus();
+  });
+
+  function startEditing() {
+    refocus.current = false;
+    setEditing(true);
+  }
 
   function commit() {
     setEditing(false);
@@ -54,6 +70,7 @@ export function DayNote({ day, note, onSave, editRequest }: DayNoteProps) {
             (event.key === "Enter" && event.metaKey)
           ) {
             event.preventDefault();
+            refocus.current = true;
             event.currentTarget.blur();
           }
         }}
@@ -64,24 +81,26 @@ export function DayNote({ day, note, onSave, editRequest }: DayNoteProps) {
   if (!note.trim()) return null;
 
   return (
-    <div
-      className="notes-view day-note"
-      role="button"
-      tabIndex={0}
-      aria-label="Edit notes for the day"
-      onMouseDown={(event) => {
-        if ((event.target as HTMLElement).closest("a")) return;
-        event.preventDefault();
-        setEditing(true);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+    <>
+      <div
+        className="notes-view day-note"
+        onMouseDown={(event) => {
+          if ((event.target as HTMLElement).closest("a")) return;
           event.preventDefault();
-          setEditing(true);
-        }
-      }}
-    >
-      <Markdown>{note}</Markdown>
-    </div>
+          startEditing();
+        }}
+      >
+        <Markdown>{note}</Markdown>
+      </div>
+      {/* Clicking the note edits it; this is the keyboard way in. */}
+      <button
+        ref={editButtonRef}
+        type="button"
+        className="text-button reveal-on-focus"
+        onClick={startEditing}
+      >
+        Edit notes for the day
+      </button>
+    </>
   );
 }

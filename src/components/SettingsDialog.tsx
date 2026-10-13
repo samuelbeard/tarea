@@ -1,7 +1,12 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { errorMessage } from "../api";
-import { SHORTCUT_GROUPS, type Shortcut } from "../shortcuts";
+import {
+  setSingleKeyShortcutsEnabled,
+  SHORTCUT_GROUPS,
+  singleKeyShortcutsEnabled,
+  type Shortcut,
+} from "../shortcuts";
 import { getTheme, setTheme, THEMES, type Theme } from "../theme";
 import { Modal } from "./Modal";
 
@@ -30,6 +35,7 @@ export function SettingsDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setThemeState] = useState(getTheme);
+  const [singleKey, setSingleKey] = useState(singleKeyShortcutsEnabled);
 
   function changeTheme(next: Theme) {
     setThemeState(next);
@@ -59,11 +65,15 @@ export function SettingsDialog({
   }
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
     const index = TABS.findIndex((item) => item.id === tab);
-    const step = event.key === "ArrowLeft" ? -1 : 1;
-    const next = TABS[(index + step + TABS.length) % TABS.length];
+    let next: (typeof TABS)[number];
+    if (event.key === "Home") next = TABS[0];
+    else if (event.key === "End") next = TABS[TABS.length - 1];
+    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const step = event.key === "ArrowLeft" ? -1 : 1;
+      next = TABS[(index + step + TABS.length) % TABS.length];
+    } else return;
+    event.preventDefault();
     setTab(next.id);
     document.getElementById(`settings-tab-${next.id}`)?.focus();
   }
@@ -88,7 +98,7 @@ export function SettingsDialog({
             type="button"
             role="tab"
             aria-selected={tab === item.id}
-            aria-controls={`settings-panel-${item.id}`}
+            aria-controls={tab === item.id ? `settings-panel-${item.id}` : undefined}
             tabIndex={tab === item.id ? 0 : -1}
             className={tab === item.id ? "is-active" : undefined}
             onClick={() => setTab(item.id)}
@@ -104,6 +114,7 @@ export function SettingsDialog({
         role="tabpanel"
         aria-labelledby={`settings-tab-${tab}`}
         className="settings-panel"
+        tabIndex={0}
       >
         {tab === "general" ? (
           <>
@@ -169,7 +180,24 @@ export function SettingsDialog({
             </section>
           </>
         ) : (
-          SHORTCUT_GROUPS.map((group) => (
+          <>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={singleKey}
+                onChange={(event) => {
+                  const enabled = event.currentTarget.checked;
+                  setSingleKey(enabled);
+                  setSingleKeyShortcutsEnabled(enabled);
+                }}
+              />
+              Single-key shortcuts (N, T, ?)
+            </label>
+            <p className="settings-help">
+              Turn these off if they get in the way of speech input or other
+              assistive tools. ⌘N and ⌘/ keep working.
+            </p>
+          {SHORTCUT_GROUPS.map((group) => (
             <section
               key={group.title}
               className="settings-section"
@@ -189,7 +217,8 @@ export function SettingsDialog({
                 ))}
               </dl>
             </section>
-          ))
+          ))}
+          </>
         )}
       </div>
 

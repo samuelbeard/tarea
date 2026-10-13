@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { formatLong, formatRelative } from "../dates";
-import { focusFirstTodo } from "../shortcuts";
+import { focusFirstTodo, todoElements } from "../shortcuts";
 import type { Todo, TodoPatch } from "../types";
 import { DayNote } from "./DayNote";
 import { TodoItem } from "./TodoItem";
@@ -65,6 +65,10 @@ function groupByProject(todos: Todo[]): Group[] {
     if (items) groups.push({ project, todos: items });
   }
   return groups;
+}
+
+function headingId(project: string) {
+  return `project-${encodeURIComponent(project)}`;
 }
 
 function NoteIcon() {
@@ -154,6 +158,34 @@ export function TodoPane({
     [ids[from], ids[to]] = [ids[to], ids[from]];
     refocusId.current = id;
     void onReorder(dayOrder(group, ids));
+  }
+
+  /** Runs `leave` for a todo that is about to leave the list, then focuses its neighbour. */
+  async function leaving(id: string, leave: () => Promise<void>) {
+    const items = todoElements();
+    const index = items.findIndex((item) => item.dataset.todoId === id);
+    const neighbour = items[index + 1] ?? items[index - 1];
+    refocusId.current = index >= 0 ? (neighbour?.dataset.todoId ?? null) : null;
+    try {
+      await leave();
+    } catch (err) {
+      refocusId.current = null;
+      throw err;
+    }
+  }
+
+  /** Saves a change. A new project moves the row to another group, remounting it, so focus follows. */
+  async function update(id: string, patch: TodoPatch) {
+    const focused = document.activeElement?.closest<HTMLElement>(".todo");
+    if (patch.project !== undefined && focused?.dataset.todoId === id) {
+      refocusId.current = id;
+    }
+    try {
+      await onUpdate(id, patch);
+    } catch (err) {
+      refocusId.current = null;
+      throw err;
+    }
   }
 
   /** Drags a todo by its handle. It can only land among the todos of its own project. */
@@ -323,33 +355,44 @@ export function TodoPane({
           <p className="empty">Nothing scheduled.</p>
         ) : null}
         {groups.map((group) => (
-          <section
+          <div
             key={group.project ? `project:${group.project}` : "untagged"}
             className={
               drag && group.todos.some((todo) => todo.id === drag.id)
                 ? "project-group is-reordering"
                 : "project-group"
             }
+            role={group.project ? "group" : undefined}
+            aria-labelledby={
+              group.project ? headingId(group.project) : undefined
+            }
           >
             {group.project ? (
-              <h2 className="project-heading">{group.project}</h2>
+              <h2
+                id={headingId(group.project)}
+                className="project-heading"
+              >
+                {group.project}
+              </h2>
             ) : null}
-            {shownTodos(group).map((todo) => (
+            {shownTodos(group).map((todo, index, shown) => (
               <TodoItem
                 key={todo.id}
                 todo={todo}
                 today={today}
                 recentProjects={recentProjects}
                 canReorder={group.todos.length > 1}
+                canShiftUp={index > 0}
+                canShiftDown={index < shown.length - 1}
                 dragging={drag?.id === todo.id}
                 onDragStart={startDrag}
                 onShift={shift}
-                onUpdate={onUpdate}
-                onMove={onMove}
-                onDelete={onDelete}
+                onUpdate={update}
+                onMove={(id, toDate) => leaving(id, () => onMove(id, toDate))}
+                onDelete={(id) => leaving(id, () => onDelete(id))}
               />
             ))}
-          </section>
+          </div>
         ))}
       </div>
     </section>

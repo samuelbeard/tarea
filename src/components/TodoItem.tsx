@@ -85,6 +85,9 @@ type TodoItemProps = {
   recentProjects: string[];
   /** False when the todo is alone in its project, so there is nowhere to move it. */
   canReorder: boolean;
+  /** Whether there is a todo above / below this one in its project. */
+  canShiftUp: boolean;
+  canShiftDown: boolean;
   dragging: boolean;
   onDragStart: (id: string, event: ReactPointerEvent<HTMLElement>) => void;
   /** Moves the todo up (-1) or down (1) within its project. */
@@ -99,6 +102,8 @@ export function TodoItem({
   today,
   recentProjects,
   canReorder,
+  canShiftUp,
+  canShiftDown,
   dragging,
   onDragStart,
   onShift,
@@ -122,6 +127,8 @@ export function TodoItem({
   const skipTitle = useRef(false);
   const selectTitleOnEdit = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** Where focus goes back to when the menu closes from the keyboard. */
+  const menuOpener = useRef<HTMLElement | null>(null);
   const articleRef = useRef<HTMLElement>(null);
   const projectButtonRef = useRef<HTMLButtonElement>(null);
   const projectEditorRef = useRef<HTMLDivElement>(null);
@@ -146,12 +153,13 @@ export function TodoItem({
         el.style.top = `${Math.max(8, window.innerHeight - rect.height - 8)}px`;
       }
     }
+    el?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
     const onPointerDown = (event: PointerEvent) => {
       if (menuRef.current?.contains(event.target as Node)) return;
       setMenu(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenu(null);
+      if (event.key === "Escape") closeMenu(true);
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -196,9 +204,30 @@ export function TodoItem({
     };
   }, [editingProject]);
 
-  function openMenu(x: number, y: number) {
+  function openMenu(x: number, y: number, opener: HTMLElement | null) {
+    menuOpener.current = opener;
     setMoveDate("");
     setMenu({ x, y });
+  }
+
+  function closeMenu(refocus: boolean) {
+    setMenu(null);
+    if (refocus) menuOpener.current?.focus();
+  }
+
+  /** Up and down arrows step through the menu's buttons. */
+  function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    if ((event.target as HTMLElement).matches("input")) return;
+    event.preventDefault();
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        "button:not(:disabled)",
+      ),
+    );
+    const index = buttons.indexOf(event.target as HTMLElement);
+    const step = event.key === "ArrowUp" ? -1 : 1;
+    buttons[(index + step + buttons.length) % buttons.length]?.focus();
   }
 
   function commitTitle(nextValue: string) {
@@ -228,12 +257,15 @@ export function TodoItem({
     );
   }
 
-  function commitProject(nextValue: string) {
+  /** Saves the project. `refocus` returns focus to the project button, for keyboard closes. */
+  function commitProject(nextValue: string, refocus = false) {
     if (projectBusy.current) return;
     projectBusy.current = true;
     window.setTimeout(() => {
       projectBusy.current = false;
     }, 0);
+    // After the busy flag, so the editor's blur from this doesn't commit a second time.
+    if (refocus) projectButtonRef.current?.focus();
     if (skipProject.current) {
       skipProject.current = false;
       setDraftProject(todo.project ?? "");
@@ -317,7 +349,7 @@ export function TodoItem({
   }
 
   async function chooseStatus(status: Status) {
-    setMenu(null);
+    closeMenu(true);
     try {
       await onUpdate(todo.id, { status });
     } catch {
@@ -329,7 +361,7 @@ export function TodoItem({
     if (!canMove) return;
     try {
       await onMove(todo.id, moveDate);
-      setMenu(null);
+      closeMenu(false);
     } catch {
       // The pane shows the error.
     }
@@ -351,11 +383,15 @@ export function TodoItem({
       className={className}
       data-todo-id={todo.id}
       tabIndex={0}
-      aria-label={todo.title}
+      aria-label={
+        todo.status === "incomplete"
+          ? todo.title
+          : `${todo.title}, ${todo.status === "complete" ? "complete" : "cancelled"}`
+      }
       onKeyDown={onRowKeyDown}
       onContextMenu={(event) => {
         event.preventDefault();
-        openMenu(event.clientX, event.clientY);
+        openMenu(event.clientX, event.clientY, articleRef.current);
       }}
     >
       {canReorder ? (
@@ -363,7 +399,7 @@ export function TodoItem({
           type="button"
           className="drag-handle"
           tabIndex={-1}
-          aria-label={`Reorder ${todo.title}`}
+          aria-hidden="true"
           title="Drag to reorder"
           onPointerDown={(event) => onDragStart(todo.id, event)}
         >
@@ -373,11 +409,7 @@ export function TodoItem({
       <input
         type="checkbox"
         checked={todo.status === "complete"}
-        aria-label={
-          todo.status === "complete"
-            ? `Mark ${todo.title} incomplete`
-            : `Mark ${todo.title} complete`
-        }
+        aria-label={`Complete ${todo.title}`}
         onChange={toggleComplete}
       />
       <div className="todo-body">
@@ -436,6 +468,7 @@ export function TodoItem({
               <button
                 type="button"
                 className="title-button"
+                aria-label={`Rename ${todo.title}`}
                 onClick={() => setEditing(true)}
               >
                 {todo.title}
@@ -449,6 +482,27 @@ export function TodoItem({
                   <div
                     ref={projectEditorRef}
                     className="project-editor"
+                    role="dialog"
+                    aria-label={`Project for ${todo.title}`}
+                    onBlur={(event) => {
+                      // Tabbing between the field and the suggestions keeps it open.
+                      if (
+                        event.currentTarget.contains(
+                          event.relatedTarget as Node | null,
+                        )
+                      ) {
+                        return;
+                      }
+                      commitProject(draftProject);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        skipProject.current = true;
+                        setDraftProject(todo.project ?? "");
+                        commitProject(todo.project ?? "", true);
+                      }
+                    }}
                   >
                     <input
                       className="title-input"
@@ -460,18 +514,10 @@ export function TodoItem({
                       onChange={(event) =>
                         setDraftProject(event.currentTarget.value)
                       }
-                      onBlur={(event) =>
-                        commitProject(event.currentTarget.value)
-                      }
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          event.currentTarget.blur();
-                        }
-                        if (event.key === "Escape") {
-                          skipProject.current = true;
-                          setDraftProject(todo.project ?? "");
-                          event.currentTarget.blur();
+                          commitProject(event.currentTarget.value, true);
                         }
                       }}
                     />
@@ -480,7 +526,7 @@ export function TodoItem({
                       selected={draftProject}
                       onPick={(name) => {
                         setDraftProject(name);
-                        commitProject(name);
+                        commitProject(name, true);
                       }}
                     />
                   </div>,
@@ -501,30 +547,32 @@ export function TodoItem({
                   if (event.key === "Escape") {
                     skipNotes.current = true;
                     event.currentTarget.blur();
+                    articleRef.current?.focus();
                   }
                 }}
               />
             ) : null}
             {notesOpen && !editingNotes && todo.notes.trim() ? (
-              <div
-                className="notes-view"
-                role="button"
-                tabIndex={0}
-                aria-label={`Edit notes for ${todo.title}`}
-                onMouseDown={(event) => {
-                  if ((event.target as HTMLElement).closest("a")) return;
-                  event.preventDefault();
-                  setEditingNotes(true);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+              <>
+                <div
+                  className="notes-view"
+                  onMouseDown={(event) => {
+                    if ((event.target as HTMLElement).closest("a")) return;
                     event.preventDefault();
                     setEditingNotes(true);
-                  }
-                }}
-              >
-                <Markdown>{todo.notes}</Markdown>
-              </div>
+                  }}
+                >
+                  <Markdown>{todo.notes}</Markdown>
+                </div>
+                {/* Clicking the notes edits them; this is the keyboard way in. */}
+                <button
+                  type="button"
+                  className="text-button reveal-on-focus"
+                  onClick={() => setEditingNotes(true)}
+                >
+                  Edit notes
+                </button>
+              </>
             ) : null}
             {notesOpen && !editingNotes && !todo.notes.trim() ? (
               <button
@@ -543,9 +591,15 @@ export function TodoItem({
           type="button"
           className="more"
           aria-label={`Actions for ${todo.title}`}
+          aria-haspopup="dialog"
+          aria-expanded={menu !== null}
           onClick={(event) => {
+            if (menu) {
+              closeMenu(false);
+              return;
+            }
             const rect = event.currentTarget.getBoundingClientRect();
-            openMenu(rect.left, rect.bottom + 6);
+            openMenu(rect.left, rect.bottom + 6, event.currentTarget);
           }}
         >
           ···
@@ -556,8 +610,13 @@ export function TodoItem({
           className={
             todo.project ? "project-button has-project" : "project-button"
           }
+          aria-haspopup="dialog"
           aria-expanded={editingProject}
-          aria-label={todo.project ? "Change project" : "Add project"}
+          aria-label={
+            todo.project
+              ? `Change project for ${todo.title}, currently ${todo.project}`
+              : `Add project for ${todo.title}`
+          }
           onClick={openProjectEditor}
         >
           <ProjectIcon />
@@ -568,12 +627,19 @@ export function TodoItem({
           ref={menuRef}
           className="menu"
           style={{ left: menu.x, top: menu.y }}
-          role="menu"
+          role="dialog"
+          aria-label={`Actions for ${todo.title}`}
+          onKeyDown={onMenuKeyDown}
+          onBlur={(event) => {
+            // Close when focus moves elsewhere in the app, but not for the date picker.
+            const next = event.relatedTarget as Node | null;
+            if (next && !event.currentTarget.contains(next)) setMenu(null);
+          }}
         >
           {todo.status !== "complete" ? (
             <button
               type="button"
-              role="menuitem"
+              className="menu-item"
               onClick={() => void chooseStatus("complete")}
             >
               Mark complete
@@ -582,7 +648,7 @@ export function TodoItem({
           {todo.status !== "incomplete" ? (
             <button
               type="button"
-              role="menuitem"
+              className="menu-item"
               onClick={() => void chooseStatus("incomplete")}
             >
               Reopen
@@ -591,11 +657,39 @@ export function TodoItem({
           {todo.status !== "cancelled" ? (
             <button
               type="button"
-              role="menuitem"
+              className="menu-item"
               onClick={() => void chooseStatus("cancelled")}
             >
-              Cancel
+              Cancel todo
             </button>
+          ) : null}
+          {canShiftUp || canShiftDown ? (
+            <div className="menu-section">
+              {canShiftUp ? (
+                <button
+                  type="button"
+                  className="menu-item"
+                  onClick={() => {
+                    closeMenu(false);
+                    onShift(todo.id, -1);
+                  }}
+                >
+                  Move up
+                </button>
+              ) : null}
+              {canShiftDown ? (
+                <button
+                  type="button"
+                  className="menu-item"
+                  onClick={() => {
+                    closeMenu(false);
+                    onShift(todo.id, 1);
+                  }}
+                >
+                  Move down
+                </button>
+              ) : null}
+            </div>
           ) : null}
           <form
             className="move-row"
@@ -623,10 +717,9 @@ export function TodoItem({
           <div className="menu-section">
             <button
               type="button"
-              role="menuitem"
-              className="menu-danger"
+              className="menu-item menu-danger"
               onClick={() => {
-                setMenu(null);
+                closeMenu(true);
                 setConfirmingDelete(true);
               }}
             >

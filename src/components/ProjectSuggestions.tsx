@@ -16,12 +16,17 @@ export function ProjectSuggestions({
   if (projects.length === 0) return null;
   const current = normalizeProject(selected);
   return (
-    <div className="project-suggestions">
+    <div
+      className="project-suggestions"
+      role="group"
+      aria-label="Recent projects"
+    >
       {projects.map((project) => (
         <button
           key={project}
           type="button"
           className={current === project ? "is-selected" : undefined}
+          aria-pressed={current === project}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onPick(project)}
         >

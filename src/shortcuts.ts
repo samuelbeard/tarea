@@ -63,6 +63,26 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
 ];
 
+const SINGLE_KEY_STORAGE_KEY = "tarea.singleKeyShortcuts";
+
+/** Whether letter and symbol shortcuts (N, T, ?) are on. They can clash with speech input. */
+export function singleKeyShortcutsEnabled(): boolean {
+  try {
+    return localStorage.getItem(SINGLE_KEY_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setSingleKeyShortcutsEnabled(enabled: boolean) {
+  try {
+    if (enabled) localStorage.removeItem(SINGLE_KEY_STORAGE_KEY);
+    else localStorage.setItem(SINGLE_KEY_STORAGE_KEY, "off");
+  } catch {
+    // Storage can be unavailable; the choice then lasts until reload.
+  }
+}
+
 /** True when keys should go to a text field rather than trigger shortcuts. */
 export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

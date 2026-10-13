@@ -30,10 +30,15 @@ import {
   addDays,
   addMonths,
   cursorFromISO,
+  formatLong,
   todayISO,
   type MonthCursor,
 } from "./dates";
-import { focusFirstTodo, isTyping } from "./shortcuts";
+import {
+  focusFirstTodo,
+  isTyping,
+  singleKeyShortcutsEnabled,
+} from "./shortcuts";
 import type { Todo, TodoPatch } from "./types";
 
 function App() {
@@ -54,12 +59,18 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [focusAddRequest, setFocusAddRequest] = useState(0);
+  const [announcement, setAnnouncement] = useState({ text: "", id: 0 });
   const todayRef = useRef(today);
   const selectedRef = useRef(selected);
   const request = useRef(0);
   const shownProblems = useRef("");
   todayRef.current = today;
   selectedRef.current = selected;
+
+  /** Reads a short message out to screen readers. */
+  const announce = useCallback((text: string) => {
+    setAnnouncement((current) => ({ text, id: current.id + 1 }));
+  }, []);
 
   // Shows file problems from the backend once, rather than on every reload.
   const reportProblems = useCallback((...lists: string[][]) => {
@@ -177,7 +188,8 @@ function App() {
       }
       return;
     }
-    if (key === "?") {
+    const singleKey = singleKeyShortcutsEnabled();
+    if (key === "?" && singleKey) {
       event.preventDefault();
       setSettingsTab("shortcuts");
       return;
@@ -185,17 +197,21 @@ function App() {
     if (key === "arrowleft" || key === "arrowright") {
       event.preventDefault();
       const step = event.shiftKey ? 7 : 1;
-      void selectDay(
-        addDays(selectedRef.current, key === "arrowleft" ? -step : step),
+      const day = addDays(
+        selectedRef.current,
+        key === "arrowleft" ? -step : step,
       );
+      announce(formatLong(day));
+      void selectDay(day);
       return;
     }
     if (event.shiftKey) return;
-    if (key === "n") {
+    if (key === "n" && singleKey) {
       event.preventDefault();
       startNewTodo();
-    } else if (key === "t") {
+    } else if (key === "t" && singleKey) {
       event.preventDefault();
+      announce(formatLong(todayRef.current));
       void selectDay(todayRef.current);
     } else if (key === "arrowdown" && focusFirstTodo()) {
       event.preventDefault();
@@ -275,6 +291,7 @@ function App() {
     try {
       await createTodo(day, title);
       await reload(day);
+      announce(`Added ${title}`);
     } catch (err) {
       setError(errorMessage(err));
       throw err;
@@ -305,9 +322,11 @@ function App() {
 
   async function remove(id: string) {
     const day = selectedRef.current;
+    const title = todos.find((todo) => todo.id === id)?.title;
     try {
       await deleteTodo(day, id);
       await reload(day);
+      if (title) announce(`Moved ${title} to the Trash`);
     } catch (err) {
       setError(errorMessage(err));
       throw err;
@@ -316,9 +335,11 @@ function App() {
 
   async function move(id: string, toDate: string) {
     const day = selectedRef.current;
+    const title = todos.find((todo) => todo.id === id)?.title;
     try {
       await moveTodo(id, day, toDate);
       await reload(day);
+      if (title) announce(`Moved ${title} to ${formatLong(toDate)}`);
     } catch (err) {
       setError(errorMessage(err));
       throw err;
@@ -349,8 +370,16 @@ function App() {
     return (
       <div className="frame">
         <TitleBar />
-        <main className="setup">
-          <p className="kicker">Loading…</p>
+        <main
+          className="setup"
+          aria-busy="true"
+        >
+          <p
+            className="kicker"
+            role="status"
+          >
+            Loading…
+          </p>
         </main>
       </div>
     );
@@ -413,6 +442,12 @@ function App() {
           onSelect={(iso) => void selectDay(iso)}
         />
       </main>
+      <div
+        className="visually-hidden"
+        role="status"
+      >
+        <span key={announcement.id}>{announcement.text}</span>
+      </div>
       {settingsTab ? (
         <SettingsDialog
           initialTab={settingsTab}
