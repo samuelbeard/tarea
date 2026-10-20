@@ -8,11 +8,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Status {
     Incomplete,
     Complete,
     Cancelled,
+    InProgress,
+    Blocked,
+}
+
+impl Status {
+    /// Unfinished todos carry forward to today.
+    fn is_open(self) -> bool {
+        matches!(self, Status::Incomplete | Status::InProgress | Status::Blocked)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -642,7 +651,7 @@ fn roll_forward(library: &Path, today: NaiveDate) -> Result<(usize, Vec<String>)
         };
         problems.extend(scanned.problems);
         for todo in scanned.todos {
-            if todo.status != Status::Incomplete {
+            if !todo.status.is_open() {
                 continue;
             }
             match relocate(library, &todo, &today_str) {
@@ -685,6 +694,8 @@ fn parse_status(status: &str) -> Result<Status, String> {
         "incomplete" => Ok(Status::Incomplete),
         "complete" => Ok(Status::Complete),
         "cancelled" => Ok(Status::Cancelled),
+        "in_progress" => Ok(Status::InProgress),
+        "blocked" => Ok(Status::Blocked),
         _ => Err(format!("Unknown status: {status}")),
     }
 }
@@ -1035,6 +1046,49 @@ mod tests {
 
         let days = list_day_names(library.path()).unwrap();
         assert_eq!(days, vec!["2026-10-05", "2026-10-06", "2026-10-08"]);
+    }
+
+    #[test]
+    fn rollover_carries_in_progress_and_blocked_todos() {
+        let library = TempDir::new("rollover-open");
+        let oct5 = day(2026, 10, 5);
+        let oct6 = day(2026, 10, 6);
+
+        let mut ids = Vec::new();
+        for (title, status) in [("Started", Status::InProgress), ("Stuck", Status::Blocked)] {
+            let todo = add_todo(library.path(), &iso(oct5), title, None, oct5).unwrap();
+            edit_todo(
+                library.path(),
+                &iso(oct5),
+                &todo.id,
+                TodoPatch {
+                    title: None,
+                    notes: None,
+                    status: Some(status),
+                    project: None,
+                },
+            )
+            .unwrap();
+            ids.push((todo.id, status));
+        }
+
+        let (moved, problems) = roll_forward(library.path(), oct6).unwrap();
+        assert_eq!(moved, 2);
+        assert!(problems.is_empty());
+        let today_items = read_day(library.path(), "2026-10-06").unwrap();
+        for (id, status) in ids {
+            assert!(today_items
+                .iter()
+                .any(|todo| todo.id == id && todo.status == status));
+        }
+        let raw = fs::read_to_string(
+            library
+                .path()
+                .join("2026-10-06")
+                .join(&today_items[0].filename),
+        )
+        .unwrap();
+        assert!(raw.contains("status: in_progress") || raw.contains("status: blocked"));
     }
 
     #[test]

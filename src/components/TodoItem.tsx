@@ -10,12 +10,14 @@ import { createPortal } from "react-dom";
 import { ChevronRight, Folder, GripVertical } from "lucide-react";
 import { addDays, formatShort } from "../dates";
 import { todoElements } from "../shortcuts";
+import { STATUSES, STATUS_ORDER } from "../status";
 import type { Status, Todo, TodoPatch } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Markdown } from "./Markdown";
 import { normalizeProject, ProjectSuggestions } from "./ProjectSuggestions";
 
-type MenuPoint = { x: number; y: number };
+/** "status" is the status-only menu opened from the status box. */
+type MenuPoint = { x: number; y: number; kind: "actions" | "status" };
 
 type TodoItemProps = {
   todo: Todo;
@@ -71,6 +73,8 @@ export function TodoItem({
   const projectButtonRef = useRef<HTMLButtonElement>(null);
   const projectEditorRef = useRef<HTMLDivElement>(null);
   const tomorrow = addDays(today, 1);
+  const status = STATUSES[todo.status];
+  const StatusIcon = status.icon;
   const canMove = moveDate > today && moveDate !== todo.day;
 
   useEffect(() => {
@@ -142,10 +146,15 @@ export function TodoItem({
     };
   }, [editingProject]);
 
-  function openMenu(x: number, y: number, opener: HTMLElement | null) {
+  function openMenu(
+    x: number,
+    y: number,
+    opener: HTMLElement | null,
+    kind: MenuPoint["kind"] = "actions",
+  ) {
     menuOpener.current = opener;
     setMoveDate("");
-    setMenu({ x, y });
+    setMenu({ x, y, kind });
   }
 
   function closeMenu(refocus: boolean) {
@@ -240,9 +249,10 @@ export function TodoItem({
     });
   }
 
-  function toggleComplete() {
+  /** The left-click action: each status either completes or reopens the todo. */
+  function advanceStatus() {
     void onUpdate(todo.id, {
-      status: todo.status === "complete" ? "incomplete" : "complete",
+      status: STATUSES[todo.status].next,
     }).catch(() => undefined);
   }
 
@@ -274,7 +284,7 @@ export function TodoItem({
       }
     } else if (key === " ") {
       event.preventDefault();
-      toggleComplete();
+      advanceStatus();
     } else if (key === "Enter") {
       event.preventDefault();
       // Like renaming in Finder: select the title so typing replaces it.
@@ -309,6 +319,8 @@ export function TodoItem({
     "todo",
     todo.status === "complete" ? "is-complete" : "",
     todo.status === "cancelled" ? "is-cancelled" : "",
+    todo.status === "in_progress" ? "is-in-progress" : "",
+    todo.status === "blocked" ? "is-blocked" : "",
     editingProject ? "is-editing-project" : "",
     dragging ? "is-dragging" : "",
   ]
@@ -324,7 +336,7 @@ export function TodoItem({
       aria-label={
         todo.status === "incomplete"
           ? todo.title
-          : `${todo.title}, ${todo.status === "complete" ? "complete" : "cancelled"}`
+          : `${todo.title}, ${status.label.toLowerCase()}`
       }
       onKeyDown={onRowKeyDown}
       onContextMenu={(event) => {
@@ -344,12 +356,31 @@ export function TodoItem({
           <GripVertical size={14} aria-hidden="true" />
         </button>
       ) : null}
-      <input
-        type="checkbox"
-        checked={todo.status === "complete"}
-        aria-label={`Complete ${todo.title}`}
-        onChange={toggleComplete}
-      />
+      <button
+        type="button"
+        className="status-box"
+        data-status={todo.status}
+        role="checkbox"
+        aria-checked={
+          todo.status === "complete"
+            ? true
+            : todo.status === "incomplete"
+              ? false
+              : "mixed"
+        }
+        aria-label={`${todo.title}: ${status.label}. Click to mark ${STATUSES[status.next].label.toLowerCase()}`}
+        title={status.label}
+        onClick={advanceStatus}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openMenu(event.clientX, event.clientY, event.currentTarget, "status");
+        }}
+      >
+        {StatusIcon ? (
+          <StatusIcon size={12} strokeWidth={3} aria-hidden="true" />
+        ) : null}
+      </button>
       <div className="todo-body">
         <div className="todo-title-row">
           <button
@@ -566,104 +597,112 @@ export function TodoItem({
           className="menu"
           style={{ left: menu.x, top: menu.y }}
           role="dialog"
-          aria-label={`Actions for ${todo.title}`}
+          aria-label={
+            menu.kind === "status"
+              ? `Status for ${todo.title}`
+              : `Actions for ${todo.title}`
+          }
           onKeyDown={onMenuKeyDown}
+          onMouseDown={(event) => {
+            // WebKit doesn't focus a clicked button; it focuses the row instead, which
+            // blurs the menu and closes it before the click lands.
+            if ((event.target as HTMLElement).closest("button")) {
+              event.preventDefault();
+            }
+          }}
           onBlur={(event) => {
             // Close when focus moves elsewhere in the app, but not for the date picker.
             const next = event.relatedTarget as Node | null;
             if (next && !event.currentTarget.contains(next)) setMenu(null);
           }}
         >
-          {todo.status !== "complete" ? (
-            <button
-              type="button"
-              className="menu-item"
-              onClick={() => void chooseStatus("complete")}
-            >
-              Mark complete
-            </button>
-          ) : null}
-          {todo.status !== "incomplete" ? (
-            <button
-              type="button"
-              className="menu-item"
-              onClick={() => void chooseStatus("incomplete")}
-            >
-              Reopen
-            </button>
-          ) : null}
-          {todo.status !== "cancelled" ? (
-            <button
-              type="button"
-              className="menu-item"
-              onClick={() => void chooseStatus("cancelled")}
-            >
-              Cancel todo
-            </button>
-          ) : null}
-          {canShiftUp || canShiftDown ? (
-            <div className="menu-section">
-              {canShiftUp ? (
+          {STATUS_ORDER.filter(
+            (option) => menu.kind === "status" || option !== todo.status,
+          ).map((option) => {
+            const Icon = STATUSES[option].icon;
+            return (
+              <button
+                key={option}
+                type="button"
+                className="menu-item status-item"
+                aria-pressed={
+                  menu.kind === "status" ? option === todo.status : undefined
+                }
+                onClick={() => void chooseStatus(option)}
+              >
+                <span className="status-box" data-status={option}>
+                  {Icon ? (
+                    <Icon size={12} strokeWidth={3} aria-hidden="true" />
+                  ) : null}
+                </span>
+                {STATUSES[option].label}
+              </button>
+            );
+          })}
+          {menu.kind === "status" ? null : (
+            <>
+              {canShiftUp || canShiftDown ? (
+                <div className="menu-section">
+                  {canShiftUp ? (
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        closeMenu(false);
+                        onShift(todo.id, -1);
+                      }}
+                    >
+                      Move up
+                    </button>
+                  ) : null}
+                  {canShiftDown ? (
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        closeMenu(false);
+                        onShift(todo.id, 1);
+                      }}
+                    >
+                      Move down
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              <form
+                className="move-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitMove();
+                }}
+              >
+                <label>
+                  Move to
+                  <input
+                    type="date"
+                    min={tomorrow}
+                    value={moveDate}
+                    onChange={(event) => setMoveDate(event.currentTarget.value)}
+                  />
+                </label>
+                <button type="submit" disabled={!canMove}>
+                  Move
+                </button>
+              </form>
+              <div className="menu-section">
                 <button
                   type="button"
-                  className="menu-item"
+                  className="menu-item menu-danger"
                   onClick={() => {
-                    closeMenu(false);
-                    onShift(todo.id, -1);
+                    closeMenu(true);
+                    setConfirmingDelete(true);
                   }}
                 >
-                  Move up
+                  Move to Trash…
                 </button>
-              ) : null}
-              {canShiftDown ? (
-                <button
-                  type="button"
-                  className="menu-item"
-                  onClick={() => {
-                    closeMenu(false);
-                    onShift(todo.id, 1);
-                  }}
-                >
-                  Move down
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          <form
-            className="move-row"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitMove();
-            }}
-          >
-            <label>
-              Move to
-              <input
-                type="date"
-                min={tomorrow}
-                value={moveDate}
-                onChange={(event) => setMoveDate(event.currentTarget.value)}
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={!canMove}
-            >
-              Move
-            </button>
-          </form>
-          <div className="menu-section">
-            <button
-              type="button"
-              className="menu-item menu-danger"
-              onClick={() => {
-                closeMenu(true);
-                setConfirmingDelete(true);
-              }}
-            >
-              Move to Trash…
-            </button>
-          </div>
+              </div>
+            </>
+          )}
         </div>
       ) : null}
       {confirmingDelete ? (

@@ -1,4 +1,9 @@
-export type Status = "incomplete" | "complete" | "cancelled";
+export type Status =
+  | "incomplete"
+  | "in_progress"
+  | "blocked"
+  | "complete"
+  | "cancelled";
 
 export type Todo = {
   id: string;

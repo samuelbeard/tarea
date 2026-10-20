@@ -10,6 +10,7 @@
   --accent: #1f6b4a;
   --accent-ink: #f7fbf8;
   --danger: #8d3b32;
+  --warn: #9a5b0c;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -35,6 +36,7 @@
     --accent: #8fceb0;
     --accent-ink: #14241c;
     --danger: #f0a8a0;
+    --warn: #e8b86a;
   }
 }
 
@@ -50,6 +52,7 @@
   --accent: #8fceb0;
   --accent-ink: #14241c;
   --danger: #f0a8a0;
+  --warn: #e8b86a;
 }
 
 * {
@@ -492,11 +495,47 @@ textarea,
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
-.todo input[type="checkbox"] {
+.status-box {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
   width: 18px;
   height: 18px;
+  padding: 0;
+  border: 1.5px solid var(--field-line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.todo > .status-box {
   margin: 4px 0 0;
-  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.todo > .status-box:hover {
+  border-color: var(--accent);
+}
+
+.status-box[data-status="complete"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.status-box[data-status="in_progress"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-box[data-status="blocked"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.status-box[data-status="cancelled"] {
+  color: var(--muted);
 }
 
 .todo-body {
@@ -838,6 +877,17 @@ textarea,
 
 .menu .menu-item:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.menu .status-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu .status-item[aria-pressed="true"] {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .menu-section {
