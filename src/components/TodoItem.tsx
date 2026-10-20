@@ -82,6 +82,7 @@ export function TodoItem({
   const status = STATUSES[todo.status];
   const StatusIcon = status.icon;
   const canMove = moveDate > today && moveDate !== todo.day;
+  const hasNotes = todo.notes.trim().length > 0;
 
   useEffect(() => {
     setDraftTitle(todo.title);
@@ -415,13 +416,15 @@ export function TodoItem({
             aria-label={
               notesOpen
                 ? `Hide notes for ${todo.title}`
-                : `Show notes for ${todo.title}`
+                : `Show notes for ${todo.title}${hasNotes ? "" : " (none yet)"}`
             }
             onClick={toggleNotes}
           >
             <ChevronRight
               size={14}
               strokeWidth={2}
+              // Filled when there are notes; the open path closes into a triangle.
+              fill={hasNotes ? "currentColor" : "none"}
               aria-hidden="true"
             />
           </button>
@@ -706,7 +709,7 @@ export function TodoItem({
                   </button>
                 ))}
               </div>
-              {canShiftUp || canShiftDown ? (
+              {/* {canShiftUp || canShiftDown ? (
                 <div className="menu-section">
                   {canShiftUp ? (
                     <button
@@ -733,7 +736,7 @@ export function TodoItem({
                     </button>
                   ) : null}
                 </div>
-              ) : null}
+              ) : null} */}
               <form
                 className="move-row"
                 onSubmit={(event) => {
