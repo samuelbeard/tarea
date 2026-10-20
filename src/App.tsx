@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { dirname } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
+import { Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createTodo,
@@ -366,6 +367,21 @@ function App() {
     }
   }
 
+  const settingsButton = (
+    <button
+      type="button"
+      className="titlebar-icon"
+      aria-label="Settings"
+      title="Settings"
+      onClick={() => setSettingsTab("general")}
+    >
+      <Settings
+        size={16}
+        aria-hidden="true"
+      />
+    </button>
+  );
+
   if (booting) {
     return (
       <div className="frame">
@@ -388,7 +404,7 @@ function App() {
   if (!library) {
     return (
       <div className="frame">
-        <TitleBar />
+        <TitleBar actions={settingsButton} />
         <SetupScreen
           error={error}
           onChoose={() => void chooseFolder()}
@@ -407,7 +423,7 @@ function App() {
 
   return (
     <div className="frame">
-      <TitleBar />
+      <TitleBar actions={settingsButton} />
       <main className="app">
         <TodoPane
           selected={selected}
