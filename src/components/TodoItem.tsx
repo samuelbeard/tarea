@@ -1,3 +1,4 @@
+import { ChevronRight, Folder, GripVertical } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -7,16 +8,21 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Folder, GripVertical } from "lucide-react";
-import { addDays, formatShort } from "../dates";
+import { addDays } from "../dates";
 import { todoElements } from "../shortcuts";
-import { STATUSES, STATUS_ORDER } from "../status";
-import type { Status, Todo, TodoPatch } from "../types";
+import { STATUS_ORDER, STATUSES } from "../status";
+import type { Priority, Status, Todo, TodoPatch } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Markdown } from "./Markdown";
 import { normalizeProject, ProjectSuggestions } from "./ProjectSuggestions";
 
 /** "status" is the status-only menu opened from the status box. */
+const PRIORITIES: { value: Priority; label: string }[] = [
+  { value: "high", label: "High" },
+  { value: "normal", label: "Normal" },
+  { value: "low", label: "Low" },
+];
+
 type MenuPoint = { x: number; y: number; kind: "actions" | "status" };
 
 type TodoItemProps = {
@@ -305,6 +311,15 @@ export function TodoItem({
     }
   }
 
+  async function choosePriority(priority: Priority) {
+    closeMenu(true);
+    try {
+      await onUpdate(todo.id, { priority });
+    } catch {
+      // The pane shows the error.
+    }
+  }
+
   async function submitMove() {
     if (!canMove) return;
     try {
@@ -321,6 +336,7 @@ export function TodoItem({
     todo.status === "cancelled" ? "is-cancelled" : "",
     todo.status === "in_progress" ? "is-in-progress" : "",
     todo.status === "blocked" ? "is-blocked" : "",
+    todo.priority === "normal" ? "" : `is-priority-${todo.priority}`,
     editingProject ? "is-editing-project" : "",
     dragging ? "is-dragging" : "",
   ]
@@ -333,11 +349,13 @@ export function TodoItem({
       className={className}
       data-todo-id={todo.id}
       tabIndex={0}
-      aria-label={
-        todo.status === "incomplete"
-          ? todo.title
-          : `${todo.title}, ${status.label.toLowerCase()}`
-      }
+      aria-label={[
+        todo.title,
+        todo.status === "incomplete" ? "" : status.label.toLowerCase(),
+        todo.priority === "normal" ? "" : `${todo.priority} priority`,
+      ]
+        .filter(Boolean)
+        .join(", ")}
       onKeyDown={onRowKeyDown}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -353,7 +371,10 @@ export function TodoItem({
           title="Drag to reorder"
           onPointerDown={(event) => onDragStart(todo.id, event)}
         >
-          <GripVertical size={14} aria-hidden="true" />
+          <GripVertical
+            size={14}
+            aria-hidden="true"
+          />
         </button>
       ) : null}
       <button
@@ -378,7 +399,11 @@ export function TodoItem({
         }}
       >
         {StatusIcon ? (
-          <StatusIcon size={12} strokeWidth={3} aria-hidden="true" />
+          <StatusIcon
+            size={12}
+            strokeWidth={3}
+            aria-hidden="true"
+          />
         ) : null}
       </button>
       <div className="todo-body">
@@ -394,7 +419,11 @@ export function TodoItem({
             }
             onClick={toggleNotes}
           >
-            <ChevronRight size={14} strokeWidth={2} aria-hidden="true" />
+            <ChevronRight
+              size={14}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
           </button>
           <div className="todo-main">
             {editing ? (
@@ -443,9 +472,7 @@ export function TodoItem({
                 {todo.title}
               </button>
             )}
-            {todo.created !== todo.day ? (
-              <p className="meta">Created {formatShort(todo.created)}</p>
-            ) : null}
+
             {editingProject
               ? createPortal(
                   <div
@@ -571,7 +598,10 @@ export function TodoItem({
           }
           onClick={openProjectEditor}
         >
-          <Folder size={16} aria-hidden="true" />
+          <Folder
+            size={16}
+            aria-hidden="true"
+          />
         </button>
         <button
           type="button"
@@ -630,9 +660,16 @@ export function TodoItem({
                 }
                 onClick={() => void chooseStatus(option)}
               >
-                <span className="status-box" data-status={option}>
+                <span
+                  className="status-box"
+                  data-status={option}
+                >
                   {Icon ? (
-                    <Icon size={12} strokeWidth={3} aria-hidden="true" />
+                    <Icon
+                      size={12}
+                      strokeWidth={3}
+                      aria-hidden="true"
+                    />
                   ) : null}
                 </span>
                 {STATUSES[option].label}
@@ -641,6 +678,34 @@ export function TodoItem({
           })}
           {menu.kind === "status" ? null : (
             <>
+              <div
+                className="menu-section"
+                role="group"
+                aria-labelledby={`priority-${todo.id}`}
+              >
+                <p
+                  className="menu-label"
+                  id={`priority-${todo.id}`}
+                >
+                  Priority
+                </p>
+                {PRIORITIES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className="menu-item priority-item"
+                    data-priority={value}
+                    aria-pressed={todo.priority === value}
+                    onClick={() => void choosePriority(value)}
+                  >
+                    <span
+                      className="priority-dot"
+                      aria-hidden="true"
+                    />
+                    {label}
+                  </button>
+                ))}
+              </div>
               {canShiftUp || canShiftDown ? (
                 <div className="menu-section">
                   {canShiftUp ? (
@@ -685,7 +750,10 @@ export function TodoItem({
                     onChange={(event) => setMoveDate(event.currentTarget.value)}
                   />
                 </label>
-                <button type="submit" disabled={!canMove}>
+                <button
+                  type="submit"
+                  disabled={!canMove}
+                >
                   Move
                 </button>
               </form>

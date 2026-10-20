@@ -5,10 +5,13 @@ export type Status =
   | "complete"
   | "cancelled";
 
+export type Priority = "high" | "normal" | "low";
+
 export type Todo = {
   id: string;
   title: string;
   status: Status;
+  priority: Priority;
   created: string;
   project: string | null;
   notes: string;
@@ -20,6 +23,7 @@ export type TodoPatch = {
   title?: string;
   notes?: string;
   status?: Status;
+  priority?: Priority;
   project?: string;
 };
 

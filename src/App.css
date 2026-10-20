@@ -11,6 +11,7 @@
   --accent-ink: #f7fbf8;
   --danger: #8d3b32;
   --warn: #9a5b0c;
+  --info: #2f5f9e;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -37,6 +38,7 @@
     --accent-ink: #14241c;
     --danger: #f0a8a0;
     --warn: #e8b86a;
+    --info: #9cbcf0;
   }
 }
 
@@ -53,6 +55,7 @@
   --accent-ink: #14241c;
   --danger: #f0a8a0;
   --warn: #e8b86a;
+  --info: #9cbcf0;
 }
 
 * {
@@ -489,6 +492,26 @@ textarea,
   opacity: 0;
 }
 
+.todo.is-priority-high {
+  --priority: var(--danger);
+}
+
+.todo.is-priority-low {
+  --priority: var(--info);
+}
+
+/* The row has 8px vertical but 4px horizontal padding. The side shadows widen the tint by
+   4px each way so it sits evenly around the content without shifting it out of line. */
+.todo.is-priority-high,
+.todo.is-priority-low {
+  --priority-tint: color-mix(in srgb, var(--priority) 6%, transparent);
+  background: var(--priority-tint);
+  background-clip: padding-box;
+  box-shadow:
+    -4px 0 0 var(--priority-tint),
+    4px 0 0 var(--priority-tint);
+}
+
 .todo.is-dragging {
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 8%, var(--panel));
@@ -888,6 +911,42 @@ textarea,
 .menu .status-item[aria-pressed="true"] {
   font-weight: 600;
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.menu-label {
+  margin: 0;
+  padding: 2px 10px 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.menu .priority-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu .priority-item[aria-pressed="true"] {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  margin: 0 5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--field-line);
+}
+
+.priority-item[data-priority="high"] .priority-dot {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.priority-item[data-priority="low"] .priority-dot {
+  border-color: var(--info);
+  background: var(--info);
 }
 
 .menu-section {

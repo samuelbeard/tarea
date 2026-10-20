@@ -17,10 +17,28 @@ pub enum Status {
     Blocked,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Priority {
+    High,
+    #[default]
+    Normal,
+    Low,
+}
+
+impl Priority {
+    fn is_normal(&self) -> bool {
+        *self == Priority::Normal
+    }
+}
+
 impl Status {
     /// Unfinished todos carry forward to today.
     fn is_open(self) -> bool {
-        matches!(self, Status::Incomplete | Status::InProgress | Status::Blocked)
+        matches!(
+            self,
+            Status::Incomplete | Status::InProgress | Status::Blocked
+        )
     }
 }
 
@@ -30,6 +48,7 @@ pub struct Todo {
     pub id: String,
     pub title: String,
     pub status: Status,
+    pub priority: Priority,
     pub created: String,
     pub project: Option<String>,
     pub notes: String,
@@ -44,7 +63,9 @@ pub struct Todo {
     pub extra: Mapping,
 }
 
-const KNOWN_KEYS: [&str; 6] = ["id", "title", "status", "created", "project", "order"];
+const KNOWN_KEYS: [&str; 7] = [
+    "id", "title", "status", "priority", "created", "project", "order",
+];
 
 /// The day's own notes, kept beside its todos. It is plain markdown with no frontmatter.
 const NOTE_FILE: &str = "note.md";
@@ -54,6 +75,13 @@ struct Frontmatter {
     id: String,
     title: String,
     status: Status,
+    /// Left out of the file when normal.
+    #[serde(
+        default,
+        skip_serializing_if = "Priority::is_normal",
+        deserialize_with = "lenient_priority"
+    )]
+    priority: Priority,
     created: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     project: Option<String>,
@@ -70,6 +98,14 @@ fn lenient_order<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Option<u32>,
     Ok(Value::deserialize(de)?
         .as_u64()
         .and_then(|n| u32::try_from(n).ok()))
+}
+
+/// Reads `priority`, treating a hand-edited value it doesn't know as normal.
+fn lenient_priority<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Priority, D::Error> {
+    Ok(Value::deserialize(de)?
+        .as_str()
+        .and_then(|value| parse_priority(value).ok())
+        .unwrap_or_default())
 }
 
 #[derive(Debug, Serialize)]
@@ -92,6 +128,7 @@ pub struct TodoPatch {
     pub title: Option<String>,
     pub notes: Option<String>,
     pub status: Option<Status>,
+    pub priority: Option<Priority>,
     pub project: Option<String>,
 }
 
@@ -288,6 +325,7 @@ fn read_todo(path: &Path, day: &str) -> Result<Todo, String> {
         id: meta.id,
         title: meta.title,
         status: meta.status,
+        priority: meta.priority,
         created: meta.created,
         project: meta.project.and_then(|project| clean_project(&project)),
         order: meta.order,
@@ -310,6 +348,7 @@ fn write_todo(path: &Path, todo: &Todo) -> Result<(), String> {
         id: todo.id.clone(),
         title: todo.title.clone(),
         status: todo.status,
+        priority: todo.priority,
         created: todo.created.clone(),
         project: todo.project.clone(),
         order: todo.order,
@@ -528,6 +567,7 @@ fn add_todo(
         id,
         title,
         status: Status::Incomplete,
+        priority: Priority::Normal,
         created: today.format("%Y-%m-%d").to_string(),
         project: project.and_then(clean_project),
         notes: String::new(),
@@ -551,6 +591,9 @@ fn edit_todo(library: &Path, day: &str, id: &str, patch: TodoPatch) -> Result<To
     }
     if let Some(status) = patch.status {
         todo.status = status;
+    }
+    if let Some(priority) = patch.priority {
+        todo.priority = priority;
     }
     if let Some(project) = patch.project {
         todo.project = clean_project(&project);
@@ -700,6 +743,15 @@ fn parse_status(status: &str) -> Result<Status, String> {
     }
 }
 
+fn parse_priority(priority: &str) -> Result<Priority, String> {
+    match priority {
+        "high" => Ok(Priority::High),
+        "normal" => Ok(Priority::Normal),
+        "low" => Ok(Priority::Low),
+        _ => Err(format!("Unknown priority: {priority}")),
+    }
+}
+
 #[tauri::command]
 pub fn prepare_today(app: tauri::AppHandle) -> Result<PrepareToday, String> {
     let library = crate::library::require_library(&app)?;
@@ -755,10 +807,12 @@ pub fn update_todo(
     title: Option<String>,
     notes: Option<String>,
     status: Option<String>,
+    priority: Option<String>,
     project: Option<String>,
 ) -> Result<Todo, String> {
     let library = crate::library::require_library(&app)?;
     let status = status.map(|value| parse_status(&value)).transpose()?;
+    let priority = priority.map(|value| parse_priority(&value)).transpose()?;
     edit_todo(
         &library,
         &date,
@@ -767,6 +821,7 @@ pub fn update_todo(
             title,
             notes,
             status,
+            priority,
             project,
         },
     )
@@ -860,6 +915,7 @@ mod tests {
                 title: None,
                 notes: Some("Oat milk\n---\nstill milk".into()),
                 status: Some(Status::Complete),
+                priority: None,
                 project: None,
             },
         )
@@ -920,6 +976,7 @@ mod tests {
                 title: Some("Final draft".into()),
                 notes: None,
                 status: None,
+                priority: None,
                 project: None,
             },
         )
@@ -1001,6 +1058,7 @@ mod tests {
                 title: None,
                 notes: None,
                 status: Some(Status::Complete),
+                priority: None,
                 project: None,
             },
         )
@@ -1014,6 +1072,7 @@ mod tests {
                 title: None,
                 notes: None,
                 status: Some(Status::Cancelled),
+                priority: None,
                 project: None,
             },
         )
@@ -1065,6 +1124,7 @@ mod tests {
                     title: None,
                     notes: None,
                     status: Some(status),
+                    priority: None,
                     project: None,
                 },
             )
@@ -1089,6 +1149,53 @@ mod tests {
         )
         .unwrap();
         assert!(raw.contains("status: in_progress") || raw.contains("status: blocked"));
+    }
+
+    #[test]
+    fn priority_is_saved_only_when_not_normal() {
+        let library = TempDir::new("priority");
+        let oct6 = day(2026, 10, 6);
+        let todo = add_todo(library.path(), &iso(oct6), "Urgent", None, oct6).unwrap();
+        let path = library.path().join("2026-10-06");
+        let patch = |priority| TodoPatch {
+            title: None,
+            notes: None,
+            status: None,
+            priority: Some(priority),
+            project: None,
+        };
+
+        let high = edit_todo(library.path(), &iso(oct6), &todo.id, patch(Priority::High)).unwrap();
+        let raw = fs::read_to_string(path.join(&high.filename)).unwrap();
+        assert!(raw.contains("priority: high"));
+        assert_eq!(
+            read_day(library.path(), "2026-10-06").unwrap()[0].priority,
+            Priority::High
+        );
+
+        let normal = edit_todo(
+            library.path(),
+            &iso(oct6),
+            &todo.id,
+            patch(Priority::Normal),
+        )
+        .unwrap();
+        let raw = fs::read_to_string(path.join(&normal.filename)).unwrap();
+        assert!(!raw.contains("priority"));
+    }
+
+    #[test]
+    fn unknown_priority_reads_as_normal() {
+        let library = TempDir::new("odd-priority");
+        let dir = library.path().join("2026-10-06");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("odd.md"),
+            "---\nid: odd-1\ntitle: Odd\nstatus: incomplete\npriority: 7\ncreated: 2026-10-06\n---\n",
+        )
+        .unwrap();
+        let todos = read_day(library.path(), "2026-10-06").unwrap();
+        assert_eq!(todos[0].priority, Priority::Normal);
     }
 
     #[test]
@@ -1153,6 +1260,7 @@ mod tests {
                 title: None,
                 notes: None,
                 status: None,
+                priority: None,
                 project: Some("   ".into()),
             },
         )
@@ -1171,6 +1279,7 @@ mod tests {
                 title: None,
                 notes: None,
                 status: None,
+                priority: None,
                 project: Some("Website redesign".into()),
             },
         )
@@ -1243,8 +1352,14 @@ mod tests {
     fn a_broken_file_is_reported_without_hiding_the_rest_of_the_day() {
         let library = TempDir::new("broken");
         let today = day(2026, 10, 6);
-        let good = add_todo(library.path(), "2026-10-04", "Still here", None, day(2026, 10, 4))
-            .unwrap();
+        let good = add_todo(
+            library.path(),
+            "2026-10-04",
+            "Still here",
+            None,
+            day(2026, 10, 4),
+        )
+        .unwrap();
         let dir = library.path().join("2026-10-04");
         fs::write(dir.join("broken.md"), "no frontmatter at all").unwrap();
 
@@ -1256,7 +1371,10 @@ mod tests {
         let (moved, problems) = roll_forward(library.path(), today).unwrap();
         assert_eq!(moved, 1);
         assert_eq!(problems.len(), 1);
-        assert_eq!(read_day(library.path(), "2026-10-06").unwrap()[0].id, good.id);
+        assert_eq!(
+            read_day(library.path(), "2026-10-06").unwrap()[0].id,
+            good.id
+        );
         assert!(dir.join("broken.md").is_file());
     }
 
@@ -1281,6 +1399,7 @@ mod tests {
                 title: None,
                 notes: None,
                 status: Some(Status::Complete),
+                priority: None,
                 project: None,
             },
         )
@@ -1298,7 +1417,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join("hand-made.md"),
-            "---\nid: hand-1\ntitle: Hand made\nstatus: incomplete\ncreated: 2026-10-06\ntags:\n- home\npriority: 2\n---\n\nBody\n",
+            "---\nid: hand-1\ntitle: Hand made\nstatus: incomplete\ncreated: 2026-10-06\ntags:\n- home\nestimate: 2\n---\n\nBody\n",
         )
         .unwrap();
 
@@ -1310,6 +1429,7 @@ mod tests {
                 title: Some("Renamed".into()),
                 notes: None,
                 status: None,
+                priority: None,
                 project: None,
             },
         )
@@ -1319,7 +1439,7 @@ mod tests {
         let raw = fs::read_to_string(dir.join("renamed.md")).unwrap();
         assert!(raw.contains("tags:"));
         assert!(raw.contains("- home"));
-        assert!(raw.contains("priority: 2"));
+        assert!(raw.contains("estimate: 2"));
         assert!(raw.contains("title: Renamed"));
         assert!(raw.ends_with("Body\n"));
     }
