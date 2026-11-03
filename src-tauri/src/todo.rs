@@ -649,6 +649,7 @@ fn reorder_day(library: &Path, day: &str, ids: &[String]) -> Result<Vec<Todo>, S
 
 /// Sends a todo's file to the system Trash so a mistaken delete can be recovered.
 fn move_to_trash(path: &Path) -> Result<(), String> {
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut trash = trash::TrashContext::default();
     // Finder's method needs Automation permission and plays a sound; this one needs neither.
     #[cfg(target_os = "macos")]
