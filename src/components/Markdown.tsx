@@ -3,6 +3,9 @@ import type { MouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+/** Schemes a note's link may open; anything else, such as `file:`, is ignored. */
+const OPENABLE = /^(https?|mailto):/i;
+
 /** Renders notes as markdown. Links open in the browser and don't start editing. */
 export function Markdown({ children }: { children: string }) {
   return (
@@ -16,10 +19,8 @@ export function Markdown({ children }: { children: string }) {
             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
               event.preventDefault();
               event.stopPropagation();
-              if (!href) return;
-              void openUrl(href).catch(() => {
-                window.open(href, "_blank", "noopener");
-              });
+              if (!href || !OPENABLE.test(href)) return;
+              void openUrl(href).catch(() => undefined);
             }}
           >
             {children}

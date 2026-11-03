@@ -24,6 +24,11 @@ type TodoPaneProps = {
   /** How many unfinished todos were last carried forward to today; 0 hides the notice. */
   carried: number;
   onDismissCarried: () => void;
+  /** About a new release or a check for one; null hides the notice. */
+  updateNotice: string | null;
+  canInstallUpdate: boolean;
+  onInstallUpdate: () => void;
+  onDismissUpdate: () => void;
   onShowToday: () => void;
   onCreate: (title: string) => Promise<void>;
   onUpdate: (id: string, patch: TodoPatch) => Promise<void>;
@@ -82,6 +87,10 @@ export function TodoPane({
   onDismissError,
   carried,
   onDismissCarried,
+  updateNotice,
+  canInstallUpdate,
+  onInstallUpdate,
+  onDismissUpdate,
   onShowToday,
   onCreate,
   onUpdate,
@@ -299,6 +308,32 @@ export function TodoPane({
           </span>
         </p>
       ) : null}
+      {updateNotice ? (
+        <p
+          className="notice"
+          role="status"
+        >
+          <span>{updateNotice}</span>
+          <span className="notice-actions">
+            {canInstallUpdate ? (
+              <button
+                type="button"
+                className="text-button"
+                onClick={onInstallUpdate}
+              >
+                Update and restart
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="text-button"
+              onClick={onDismissUpdate}
+            >
+              Dismiss
+            </button>
+          </span>
+        </p>
+      ) : null}
       {canAdd ? (
         <form
           className="add-form"
@@ -356,15 +391,13 @@ export function TodoPane({
                 {group.project}
               </h2>
             ) : null}
-            {shownTodos(group).map((todo, index, shown) => (
+            {shownTodos(group).map((todo) => (
               <TodoItem
                 key={todo.id}
                 todo={todo}
                 today={today}
                 recentProjects={recentProjects}
                 canReorder={group.todos.length > 1}
-                canShiftUp={index > 0}
-                canShiftDown={index < shown.length - 1}
                 dragging={drag?.id === todo.id}
                 onDragStart={startDrag}
                 onShift={shift}

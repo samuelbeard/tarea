@@ -1,6 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
 import { dirname } from "@tauri-apps/api/path";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -65,6 +68,10 @@ function App() {
   const selectedRef = useRef(selected);
   const request = useRef(0);
   const shownProblems = useRef("");
+  /** Saves still being written, which closing the window waits for. */
+  const pendingSaves = useRef(new Set<Promise<unknown>>());
+  const [release, setRelease] = useState<Update | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   todayRef.current = today;
   selectedRef.current = selected;
 
@@ -81,27 +88,35 @@ function App() {
     if (message) setError(message);
   }, []);
 
-  const reload = useCallback(async (day: string) => {
+  /**
+   * Reloads the days list and `day`. `rollover` also carries unfinished todos forward, which reads
+   * every past day, so it runs only when the date may have changed rather than on every edit.
+   */
+  const reload = useCallback(async (day: string, rollover = false) => {
     const token = ++request.current;
-    const prepared = await prepareToday();
-    if (prepared.moved > 0) setCarried(prepared.moved);
-    if (request.current !== token) return prepared.today;
-    setToday(prepared.today);
-    todayRef.current = prepared.today;
+    let problems: string[] = [];
+    if (rollover) {
+      const prepared = await prepareToday();
+      if (prepared.moved > 0) setCarried(prepared.moved);
+      if (request.current !== token) return prepared.today;
+      setToday(prepared.today);
+      todayRef.current = prepared.today;
+      problems = prepared.problems;
+    }
     const [nextDays, items, recent] = await Promise.all([
       listDays(),
       loadDay(day),
       recentProjects(),
     ]);
-    if (request.current !== token) return prepared.today;
+    if (request.current !== token) return todayRef.current;
     setDays(nextDays);
     setProjects(recent);
     if (selectedRef.current === day) {
       setTodos(items.todos);
       setNote(items.note);
     }
-    reportProblems(prepared.problems, items.problems);
-    return prepared.today;
+    reportProblems(problems, items.problems);
+    return todayRef.current;
   }, [reportProblems]);
 
   useEffect(() => {
@@ -147,32 +162,105 @@ function App() {
 
   useEffect(() => {
     if (!library) return;
-    const refresh = () => {
-      void reload(selectedRef.current).catch((err) =>
+    const refresh = (rollover: boolean) => {
+      void reload(selectedRef.current, rollover).catch((err) =>
         setError(errorMessage(err)),
       );
     };
+    const dateChanged = () => todayISO() !== todayRef.current;
     const tick = () => {
-      if (todayISO() !== todayRef.current) refresh();
+      if (dateChanged()) refresh(true);
     };
+    const onFocus = () => refresh(dateChanged());
     const id = window.setInterval(tick, 30_000);
     // Coming back to the window picks up edits made in other apps or by sync.
-    window.addEventListener("focus", refresh);
+    window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(id);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", onFocus);
     };
   }, [library, reload]);
+
+  // Closing (including ⌘Q, which closes the window) first blurs the field being edited so it
+  // commits, then waits for every save to land.
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let closing = false;
+    const stop = appWindow.onCloseRequested(async (event) => {
+      if (closing) return;
+      event.preventDefault();
+      closing = true;
+      await flushSaves();
+      await appWindow.destroy();
+    });
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  /** Commits the field being edited and waits for every save to land. */
+  async function flushSaves() {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    // Lets the blur's commit start its save before waiting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.allSettled([...pendingSaves.current]);
+  }
+
+  /** Looks for a newer release. Only a check the user asked for reports "up to date" or errors. */
+  const checkForUpdate = useCallback(async (manual: boolean) => {
+    try {
+      const found = await check();
+      if (found) {
+        setRelease(found);
+        setUpdateNotice(`Tarea ${found.version} is available.`);
+      } else if (manual) {
+        setUpdateNotice("Tarea is up to date.");
+      }
+    } catch (err) {
+      if (manual) {
+        setUpdateNotice(`Couldn't check for updates. ${errorMessage(err)}`);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (import.meta.env.PROD) void checkForUpdate(false);
+  }, [checkForUpdate]);
+
+  async function installUpdate() {
+    if (!release) return;
+    setRelease(null);
+    setUpdateNotice(`Downloading Tarea ${release.version}…`);
+    try {
+      await release.downloadAndInstall();
+      await flushSaves();
+      await relaunch();
+    } catch (err) {
+      setUpdateNotice(`The update didn't install. ${errorMessage(err)}`);
+    }
+  }
+
+  /** Tracks a save so closing the window waits for it. */
+  function track<T>(save: Promise<T>): Promise<T> {
+    pendingSaves.current.add(save);
+    void save
+      .catch(() => undefined)
+      .finally(() => pendingSaves.current.delete(save));
+    return save;
+  }
 
   useEffect(() => {
     const listeners = [
       listen("open-settings", () => setSettingsTab("general")),
       listen("open-shortcuts", () => setSettingsTab("shortcuts")),
+      listen("check-updates", () => void checkForUpdate(true)),
     ];
     return () => {
       for (const listener of listeners) void listener.then((stop) => stop());
     };
-  }, []);
+  }, [checkForUpdate]);
 
   // Shortcuts that work anywhere outside a text field. Row-level keys live in TodoItem, which
   // marks the events it handles, so they never reach here twice.
@@ -269,7 +357,7 @@ function App() {
     setLibraryPath(path);
     setError(null);
     shownProblems.current = "";
-    const preparedDay = await reload(todayISO());
+    const preparedDay = await reload(todayISO(), true);
     setSelected(preparedDay);
     selectedRef.current = preparedDay;
     setCursor(cursorFromISO(preparedDay));
@@ -290,7 +378,7 @@ function App() {
   async function create(title: string) {
     const day = selectedRef.current;
     try {
-      await createTodo(day, title);
+      await track(createTodo(day, title));
       await reload(day);
       announce(`Added ${title}`);
     } catch (err) {
@@ -302,7 +390,7 @@ function App() {
   async function update(id: string, patch: TodoPatch) {
     const day = selectedRef.current;
     try {
-      await updateTodo(day, id, patch);
+      await track(updateTodo(day, id, patch));
       await reload(day);
     } catch (err) {
       setError(errorMessage(err));
@@ -313,7 +401,7 @@ function App() {
   async function updateNote(next: string) {
     const day = selectedRef.current;
     try {
-      await saveNote(day, next);
+      await track(saveNote(day, next));
       await reload(day);
     } catch (err) {
       setError(errorMessage(err));
@@ -359,7 +447,7 @@ function App() {
       ),
     );
     try {
-      await reorderTodos(day, ids);
+      await track(reorderTodos(day, ids));
       await reload(day);
     } catch (err) {
       setError(errorMessage(err));
@@ -435,6 +523,10 @@ function App() {
           onDismissError={() => setError(null)}
           carried={carried}
           onDismissCarried={() => setCarried(0)}
+          updateNotice={updateNotice}
+          canInstallUpdate={release !== null}
+          onInstallUpdate={() => void installUpdate()}
+          onDismissUpdate={() => setUpdateNotice(null)}
           onShowToday={() => void selectDay(today)}
           onCreate={create}
           onUpdate={update}

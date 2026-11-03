@@ -31,9 +31,6 @@ type TodoItemProps = {
   recentProjects: string[];
   /** False when the todo is alone in its project, so there is nowhere to move it. */
   canReorder: boolean;
-  /** Whether there is a todo above / below this one in its project. */
-  canShiftUp: boolean;
-  canShiftDown: boolean;
   dragging: boolean;
   onDragStart: (id: string, event: ReactPointerEvent<HTMLElement>) => void;
   /** Moves the todo up (-1) or down (1) within its project. */
@@ -48,8 +45,6 @@ export function TodoItem({
   today,
   recentProjects,
   canReorder,
-  canShiftUp,
-  canShiftDown,
   dragging,
   onDragStart,
   onShift,
@@ -86,9 +81,28 @@ export function TodoItem({
 
   useEffect(() => {
     setDraftTitle(todo.title);
-    setDraftNotes(todo.notes);
     setDraftProject(todo.project ?? "");
-  }, [todo.title, todo.notes, todo.project]);
+  }, [todo.title, todo.project]);
+
+  // An autosave reloads the todo, which mustn't overwrite what is still being typed.
+  useEffect(() => {
+    if (!editingNotes) setDraftNotes(todo.notes);
+  }, [todo.notes, editingNotes]);
+
+  /** The notes as they were when editing began, so Escape can undo autosaves too. */
+  const notesAtEdit = useRef(todo.notes);
+  useEffect(() => {
+    if (editingNotes) notesAtEdit.current = todo.notes;
+  }, [editingNotes]);
+
+  // Saves notes when typing pauses, so quitting mid-edit loses at most a moment of typing.
+  useEffect(() => {
+    if (!editingNotes || draftNotes.trim() === todo.notes) return;
+    const timer = window.setTimeout(() => {
+      void onUpdate(todo.id, { notes: draftNotes }).catch(() => undefined);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [editingNotes, draftNotes, todo.notes, todo.id]);
 
   useEffect(() => {
     if (!menu) return;
@@ -200,8 +214,12 @@ export function TodoItem({
   function commitNotes() {
     if (skipNotes.current) {
       skipNotes.current = false;
-      setDraftNotes(todo.notes);
+      const original = notesAtEdit.current;
+      setDraftNotes(original);
       setEditingNotes(false);
+      if (original !== todo.notes) {
+        void onUpdate(todo.id, { notes: original }).catch(() => undefined);
+      }
       return;
     }
     setEditingNotes(false);
@@ -709,34 +727,6 @@ export function TodoItem({
                   </button>
                 ))}
               </div>
-              {/* {canShiftUp || canShiftDown ? (
-                <div className="menu-section">
-                  {canShiftUp ? (
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={() => {
-                        closeMenu(false);
-                        onShift(todo.id, -1);
-                      }}
-                    >
-                      Move up
-                    </button>
-                  ) : null}
-                  {canShiftDown ? (
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={() => {
-                        closeMenu(false);
-                        onShift(todo.id, 1);
-                      }}
-                    >
-                      Move down
-                    </button>
-                  ) : null}
-                </div>
-              ) : null} */}
               <form
                 className="move-row"
                 onSubmit={(event) => {

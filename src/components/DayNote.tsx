@@ -42,6 +42,16 @@ export function DayNote({ day, note, onSave, editRequest }: DayNoteProps) {
     editButtonRef.current.focus();
   });
 
+  // Saves when typing pauses, so quitting mid-edit loses at most a moment of typing. The save
+  // reloads `note`, which the effect above leaves alone while editing.
+  useEffect(() => {
+    if (!editing || draft.trim() === note) return;
+    const timer = window.setTimeout(() => {
+      void onSave(draft).catch(() => undefined);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [editing, draft, note]);
+
   function startEditing() {
     refocus.current = false;
     setEditing(true);
