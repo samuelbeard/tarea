@@ -5,7 +5,9 @@ A day-to-day todo app for macOS that saves everything as plain markdown files in
 ## Installing the beta
 
 1. Download `Tarea_<version>_universal.dmg` from the latest release and drag Tarea to Applications.
-2. The beta isn't notarized by Apple, so the first launch needs a right-click (or Control-click) on Tarea → **Open** → **Open**. After that it opens normally.
+2. The beta isn't notarized by Apple, so macOS blocks the first launch. After that it opens normally.
+   - **macOS 15 (Sequoia) or later:** open Tarea once and dismiss the warning, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the Tarea message, and confirm.
+   - **macOS 14 or earlier:** right-click (or Control-click) Tarea → **Open** → **Open**.
 3. Tarea checks for updates when it starts, and from **Tarea → Check for Updates…**. Accept the update and it restarts on the new version.
 
 Requires macOS 11 or later.
