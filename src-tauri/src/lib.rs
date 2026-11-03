@@ -9,11 +9,17 @@ fn install_menu(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
     use tauri::Emitter;
 
+    // A plain Quit exits at once; closing the window instead lets the page save open edits first.
+    let quit = MenuItemBuilder::with_id("quit", "Quit Tarea")
+        .accelerator("CmdOrCtrl+Q")
+        .build(app)?;
     let settings = MenuItemBuilder::with_id("settings", "Settings…")
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
+    let updates = MenuItemBuilder::with_id("check-updates", "Check for Updates…").build(app)?;
     let app_menu = SubmenuBuilder::new(app, "Tarea")
         .about(None)
+        .item(&updates)
         .separator()
         .item(&settings)
         .separator()
@@ -23,7 +29,7 @@ fn install_menu(app: &tauri::App) -> tauri::Result<()> {
         .hide_others()
         .show_all()
         .separator()
-        .quit()
+        .item(&quit)
         .build()?;
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .undo()
@@ -50,9 +56,20 @@ fn install_menu(app: &tauri::App) -> tauri::Result<()> {
         .build()?;
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
+        if event.id().as_ref() == "quit" {
+            use tauri::Manager;
+            match app.get_webview_window("main") {
+                Some(window) => {
+                    let _ = window.close();
+                }
+                None => app.exit(0),
+            }
+            return;
+        }
         let name = match event.id().as_ref() {
             "settings" => "open-settings",
             "shortcuts" => "open-shortcuts",
+            "check-updates" => "check-updates",
             _ => return,
         };
         let _ = app.emit(name, ());
@@ -76,9 +93,14 @@ pub fn run() {
         }
     }));
 
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
     builder
+        .manage(library::LibraryLock::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|_app| {
             #[cfg(target_os = "macos")]
             install_menu(_app)?;

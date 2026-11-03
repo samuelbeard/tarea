@@ -752,54 +752,56 @@ fn parse_priority(priority: &str) -> Result<Priority, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn prepare_today(app: tauri::AppHandle) -> Result<PrepareToday, String> {
-    let library = crate::library::require_library(&app)?;
-    let today = Local::now().date_naive();
-    let (moved, problems) = roll_forward(&library, today)?;
-    Ok(PrepareToday {
-        today: today.format("%Y-%m-%d").to_string(),
-        moved,
-        problems,
+    crate::library::with_library(&app, |library| {
+        let today = Local::now().date_naive();
+        let (moved, problems) = roll_forward(library, today)?;
+        Ok(PrepareToday {
+            today: today.format("%Y-%m-%d").to_string(),
+            moved,
+            problems,
+        })
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_days(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-    let library = crate::library::require_library(&app)?;
-    list_day_names(&library)
+    crate::library::with_library(&app, list_day_names)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_day(app: tauri::AppHandle, date: String) -> Result<DayTodos, String> {
-    let library = crate::library::require_library(&app)?;
-    scan_day(&library, &date)
+    crate::library::with_library(&app, |library| scan_day(library, &date))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_todo(
     app: tauri::AppHandle,
     date: String,
     title: String,
     project: Option<String>,
 ) -> Result<Todo, String> {
-    let library = crate::library::require_library(&app)?;
-    add_todo(
-        &library,
-        &date,
-        &title,
-        project.as_deref(),
-        Local::now().date_naive(),
-    )
+    crate::library::with_library(&app, |library| {
+        add_todo(
+            library,
+            &date,
+            &title,
+            project.as_deref(),
+            Local::now().date_naive(),
+        )
+    })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn recent_projects(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-    let library = crate::library::require_library(&app)?;
-    recent_project_names(&library, Local::now().date_naive())
+    crate::library::with_library(&app, |library| {
+        recent_project_names(library, Local::now().date_naive())
+    })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
+#[allow(clippy::too_many_arguments)]
 pub fn update_todo(
     app: tauri::AppHandle,
     date: String,
@@ -810,60 +812,61 @@ pub fn update_todo(
     priority: Option<String>,
     project: Option<String>,
 ) -> Result<Todo, String> {
-    let library = crate::library::require_library(&app)?;
-    let status = status.map(|value| parse_status(&value)).transpose()?;
-    let priority = priority.map(|value| parse_priority(&value)).transpose()?;
-    edit_todo(
-        &library,
-        &date,
-        &id,
-        TodoPatch {
-            title,
-            notes,
-            status,
-            priority,
-            project,
-        },
-    )
+    crate::library::with_library(&app, |library| {
+        let status = status.map(|value| parse_status(&value)).transpose()?;
+        let priority = priority.map(|value| parse_priority(&value)).transpose()?;
+        edit_todo(
+            library,
+            &date,
+            &id,
+            TodoPatch {
+                title,
+                notes,
+                status,
+                priority,
+                project,
+            },
+        )
+    })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reorder_todos(
     app: tauri::AppHandle,
     date: String,
     ids: Vec<String>,
 ) -> Result<Vec<Todo>, String> {
-    let library = crate::library::require_library(&app)?;
-    reorder_day(&library, &date, &ids)
+    crate::library::with_library(&app, |library| reorder_day(library, &date, &ids))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_note(app: tauri::AppHandle, date: String, note: String) -> Result<String, String> {
-    let library = crate::library::require_library(&app)?;
-    write_note(&library, &date, &note)
+    crate::library::with_library(&app, |library| write_note(library, &date, &note))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_todo(app: tauri::AppHandle, date: String, id: String) -> Result<(), String> {
-    let library = crate::library::require_library(&app)?;
-    remove_todo(&library, &date, &id, move_to_trash)
+    crate::library::with_library(&app, |library| {
+        remove_todo(library, &date, &id, move_to_trash)
+    })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_todo(
     app: tauri::AppHandle,
     id: String,
     from_date: String,
     to_date: String,
 ) -> Result<Todo, String> {
-    let library = crate::library::require_library(&app)?;
-    shift_todo(
-        &library,
-        &id,
-        &from_date,
-        &to_date,
-        Local::now().date_naive(),
-    )
+    crate::library::with_library(&app, |library| {
+        shift_todo(
+            library,
+            &id,
+            &from_date,
+            &to_date,
+            Local::now().date_naive(),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -922,7 +925,7 @@ mod tests {
         .unwrap();
 
         let raw =
-            fs::read_to_string(library.path().join(&iso(today)).join(&updated.filename)).unwrap();
+            fs::read_to_string(library.path().join(iso(today)).join(&updated.filename)).unwrap();
         assert!(raw.starts_with("---\n"));
         assert!(raw.contains("title:"));
         assert!(raw.contains("status: complete"));
@@ -1466,7 +1469,7 @@ mod tests {
         let moved = shift_todo(library.path(), &c.id, "2026-10-07", "2026-10-08", today).unwrap();
         assert_eq!(moved.order, None);
         let e = add_todo(library.path(), "2026-10-08", "E", None, today).unwrap();
-        reorder_day(library.path(), "2026-10-08", &[e.id.clone()]).unwrap();
+        reorder_day(library.path(), "2026-10-08", std::slice::from_ref(&e.id)).unwrap();
         assert_eq!(
             ids(read_day(library.path(), "2026-10-07").unwrap()),
             [a.id.clone(), b.id.clone(), d.id.clone()]

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::Manager;
 
 const LIBRARY_DIR: &str = "Tarea";
@@ -63,7 +64,25 @@ pub fn save_library(config_dir: &Path, library: &Path) -> Result<(), String> {
         .map_err(|err| format!("Could not save settings: {err}"))
 }
 
-pub fn require_library(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+/// Held while a command touches the library. Commands run off the main thread, so this keeps
+/// their file changes from interleaving.
+#[derive(Default)]
+pub struct LibraryLock(Mutex<()>);
+
+/// Runs `f` on the chosen library while holding the library lock.
+pub fn with_library<T>(
+    app: &tauri::AppHandle,
+    f: impl FnOnce(&Path) -> Result<T, String>,
+) -> Result<T, String> {
+    let lock = app.state::<LibraryLock>();
+    let _guard = lock
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&require_library(app)?)
+}
+
+fn require_library(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let config_dir = app
         .path()
         .app_config_dir()
@@ -71,7 +90,7 @@ pub fn require_library(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     read_library(&config_dir)?.ok_or_else(|| "Choose a folder for your todos first.".into())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_library(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let config_dir = app
         .path()
@@ -80,8 +99,13 @@ pub fn get_library(app: tauri::AppHandle) -> Result<Option<String>, String> {
     Ok(read_library(&config_dir)?.map(|path| path.to_string_lossy().into_owned()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_library(app: tauri::AppHandle, parent_path: String) -> Result<String, String> {
+    let lock = app.state::<LibraryLock>();
+    let _guard = lock
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let library = create_library(Path::new(&parent_path))?;
     let config_dir = app
         .path()
